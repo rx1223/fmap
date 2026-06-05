@@ -2,11 +2,16 @@ import type { CapabilitySource, DetectionResult } from "./source.js";
 import { graphqlSource } from "./graphql.js";
 import { openapiSource } from "./openapi.js";
 import { trpcSource } from "./trpc.js";
+import { routeSource } from "./route.js";
 
 export type { CapabilitySource, DetectionResult, SourceConfig } from "./source.js";
 
-/** All registered capability sources. Add new protocols here. */
-export const ALL_SOURCES: CapabilitySource[] = [graphqlSource, openapiSource, trpcSource];
+/**
+ * All registered capability sources. Add new protocols here.
+ * Order matters for detection precedence: a project with a formal spec
+ * (graphql/openapi/trpc) is preferred over raw route handlers.
+ */
+export const ALL_SOURCES: CapabilitySource[] = [graphqlSource, openapiSource, trpcSource, routeSource];
 
 export function getSource(type: string): CapabilitySource | undefined {
   return ALL_SOURCES.find((s) => s.id === type);
