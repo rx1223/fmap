@@ -34,6 +34,14 @@
   ],
   "license": "MIT",
   "author": "rx1223",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rx1223/fmap.git"
+  },
+  "homepage": "https://github.com/rx1223/fmap#readme",
+  "bugs": {
+    "url": "https://github.com/rx1223/fmap/issues"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
     "commander": "^12.1.0",
