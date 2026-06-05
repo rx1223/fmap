@@ -1,12 +1,13 @@
 import prompts from "prompts";
 import {
-  type ProjectConfig,
   defaultProjectConfig,
-  detectProject,
+  detectFrontendRoot,
   isInitialized,
   scaffoldFeatureMap,
   featureMapDir,
 } from "../config/project.js";
+import { detectSources, type DetectedSource } from "../core/sources/index.js";
+import type { SourceConfig } from "../core/sources/source.js";
 
 export interface InitOptions {
   yes?: boolean;
@@ -18,8 +19,9 @@ const onCancel = () => {
 };
 
 /**
- * `fmap init` — scaffold ./feature-map, auto-detect schema + frontend (tier-1),
- * and ask the tier-2 strategy knobs (each defaulted). `-y` accepts all defaults.
+ * `fmap init` — scaffold ./feature-map, auto-detect capability sources + frontend
+ * (tier-1, no presupposed structure), and ask the tier-2 strategy knobs (each
+ * defaulted). `-y` accepts all defaults.
  */
 export async function initCommand(opts: InitOptions): Promise<void> {
   const cwd = process.cwd();
@@ -29,8 +31,7 @@ export async function initCommand(opts: InitOptions): Promise<void> {
       {
         type: "confirm",
         name: "proceed",
-        message:
-          "feature-map/ already exists. Re-detect and rewrite config? (existing capabilities are preserved)",
+        message: "feature-map/ already exists. Re-detect and rewrite config? (existing capabilities are preserved)",
         initial: false,
       },
       { onCancel },
@@ -41,15 +42,16 @@ export async function initCommand(opts: InitOptions): Promise<void> {
     }
   }
 
-  // ── Tier 1: auto-detect, present a default the user reviews ──────────────
-  const detected = detectProject(cwd);
+  // ── Tier 1: auto-detect sources + frontend, present a default to review ──
+  const detected = detectSources(cwd);
+  const frontendRoot = detectFrontendRoot(cwd);
   console.log("Auto-detected (tier-1):");
-  const schemaLine =
-    detected.sdlPath ??
-    detected.endpointGuess ??
-    "(none found — set schema.sdlPath or schema.endpoint in the config)";
-  console.log(`    schema        : ${schemaLine}`);
-  console.log(`    frontend root : ${detected.frontendRoot ?? "(none found — defaulting to src/)"}`);
+  if (detected.length) {
+    for (const d of detected) console.log(`    source        : ${d.summary}`);
+  } else {
+    console.log("    source        : (none found — add one under `sources:` in the config)");
+  }
+  console.log(`    frontend root : ${frontendRoot ?? "(none found — defaulting to src/)"}`);
   console.log("");
 
   // ── Tier 2: undetectable + project-dependent knobs, each with a default ──
@@ -60,7 +62,7 @@ export async function initCommand(opts: InitOptions): Promise<void> {
         {
           type: "select",
           name: "opsOnlyCapabilities",
-          message: "Capabilities the schema exposes but the frontend never calls (ops-only / dead):",
+          message: "Capabilities the backend exposes but the frontend never calls (ops-only / dead):",
           choices: [
             { title: "include & tag them (recommended)", value: "include_tagged" },
             { title: "exclude them", value: "exclude" },
@@ -93,15 +95,11 @@ export async function initCommand(opts: InitOptions): Promise<void> {
     };
   }
 
-  const schema: ProjectConfig["schema"] = detected.sdlPath
-    ? { sdlPath: detected.sdlPath }
-    : detected.endpointGuess
-      ? { endpoint: detected.endpointGuess }
-      : {};
+  const sources: SourceConfig[] = detected.map((d: DetectedSource) => d.config);
 
   const cfg = defaultProjectConfig({
-    schema,
-    frontend: detected.frontendRoot ? { root: detected.frontendRoot } : undefined,
+    sources,
+    frontend: frontendRoot ? { root: frontendRoot } : undefined,
     strategy,
   });
 
@@ -113,8 +111,9 @@ export async function initCommand(opts: InitOptions): Promise<void> {
   console.log("    ├── generated/           (md views — do not edit; run `fmap render`)");
   console.log("    └── feature-map.config.yaml");
   console.log("\nNext:");
-  if (!detected.sdlPath && !detected.endpointGuess) {
-    console.log("  1. Set schema.sdlPath or schema.endpoint in feature-map/feature-map.config.yaml");
+  if (!sources.length) {
+    console.log("  1. Add a capability source under `sources:` in feature-map/feature-map.config.yaml");
+    console.log("     (e.g. - type: graphql / openapi / trpc / route)");
     console.log("  2. Run `fmap auth --claude` (if you haven't), then `fmap build`");
   } else {
     console.log("  1. Run `fmap auth --claude` (if you haven't)");

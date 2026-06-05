@@ -1,10 +1,7 @@
-import { Project, Node, SyntaxKind, ts } from "ts-morph";
-import type { GraphQLSchema } from "graphql";
-import { walkFiles } from "./fs-utils.js";
+import { Node, SyntaxKind } from "ts-morph";
 import { pageId as toPageId } from "./util.js";
-import { coreObjectTypes } from "./introspect.js";
+import { createFrontendProject, type DiscoveredPage } from "./frontend-ast.js";
 import type { PageNode, Sitemap } from "./model.js";
-import type { ScanResult } from "./scan-frontend.js";
 
 /**
  * M5 — the sitemap (pages + tree + entity hubs + a few special transitions).
@@ -25,21 +22,23 @@ interface RouteHit {
 }
 
 export interface BuildSitemapInput {
-  scan: ScanResult;
-  schema: GraphQLSchema;
+  /** Pages discovered by the sources' usage scans (components issuing calls). */
+  pages: DiscoveredPage[];
+  /** Entity type names for hub detection (union of operation entities). */
+  entityTypes: string[];
   frontendRoot: string;
   projectRoot: string;
   existing: Sitemap;
 }
 
 export function buildSitemap(input: BuildSitemapInput): Sitemap {
-  const routes = detectRoutes(input.frontendRoot, input.projectRoot);
+  const routes = detectRoutes(input.frontendRoot);
   const routeByComponent = new Map(routes.map((r) => [r.component, r]));
-  const hubTypes = coreObjectTypes(input.schema);
+  const hubTypes = input.entityTypes;
 
-  // Page set = components that issue GraphQL calls ∪ components named in routes.
+  // Page set = components that issue backend calls ∪ components named in routes.
   const components = new Map<string, { name: string }>();
-  for (const p of input.scan.pages) components.set(p.name, { name: p.name });
+  for (const p of input.pages) components.set(p.name, { name: p.name });
   for (const r of routes) if (!components.has(r.component)) components.set(r.component, { name: r.component });
 
   const detected: PageNode[] = [...components.values()].map(({ name }) => {
@@ -99,23 +98,8 @@ export function mergeSitemap(existing: Sitemap, detected: Sitemap): Sitemap {
 
 // ── Route detection (best-effort, React Router) ─────────────────────────────
 
-function detectRoutes(frontendRoot: string, _projectRoot: string): RouteHit[] {
-  const project = new Project({
-    compilerOptions: { allowJs: true, jsx: ts.JsxEmit.Preserve, target: ts.ScriptTarget.Latest, noLib: true },
-    skipLoadingLibFiles: true,
-    skipFileDependencyResolution: true,
-  });
-  const files = walkFiles(frontendRoot, {
-    filter: (p) => /\.(tsx?|jsx?|mts|cts)$/.test(p) && !p.endsWith(".d.ts"),
-  });
-  for (const f of files) {
-    try {
-      project.addSourceFileAtPathIfExists(f);
-    } catch {
-      /* skip unparseable */
-    }
-  }
-
+function detectRoutes(frontendRoot: string): RouteHit[] {
+  const project = createFrontendProject(frontendRoot);
   const hits: RouteHit[] = [];
   for (const sf of project.getSourceFiles()) {
     // JSX <Route path=... element={<Comp/>} /> (and component={Comp})

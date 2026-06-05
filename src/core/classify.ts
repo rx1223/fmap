@@ -1,20 +1,20 @@
-import type { ResolverInfo } from "./introspect.js";
-import type { ScanResult, CallSite } from "./scan-frontend.js";
+import type { Operation } from "./operation.js";
+import type { UsageResult, CallSite } from "./frontend-ast.js";
 
 /**
- * M3 — the four-quadrant classification (deterministic, no LLM).
+ * The four-quadrant classification (deterministic, no LLM). Source-agnostic:
+ * it classifies generic Operations against frontend usage, regardless of
+ * protocol.
  *
  *                   frontend HAS call      frontend NO call          scanner CAN'T TELL
- *   schema HAS    → user_capability        no_entry                  unknown
- *                   (+ UI anchor + mount)  (dead / ops-only / cron)  (held, not concluded)
+ *   backend HAS    → user_capability        no_entry                  unknown
+ *                    (+ UI anchor + mount)  (dead / ops-only / cron)  (held, not concluded)
  *
- * `noise` is the mechanical pre-filter (introspection/Relay/health). The split
- * between `no_entry` and `unknown` is the honest one: we only conclude
- * "no entry" when the scanner is CONFIDENT. If the scan hit ANY unresolved
- * (dynamic) call-site, it has blind spots — a dynamic dispatch could be calling
- * any resolver — so every otherwise-uncalled resolver is `unknown`, not
- * `no_entry`. Tidy codebases → crisp no_entry; messy ones → more unknown. The
- * tool never breaks, it just converges at a different speed.
+ * `noise` is the mechanical pre-filter: protocol-specific noise is flagged by
+ * the source (`operation.noise`); cross-protocol noise (health/ping/…) is
+ * caught here. The `no_entry` vs `unknown` split is the honest one: we only
+ * conclude "no entry" when the scanner is CONFIDENT (no unresolved dynamic
+ * sites). Tidy codebases → crisp no_entry; messy ones → more unknown.
  */
 
 export type Quadrant = "user_capability" | "no_entry" | "unknown" | "noise";
@@ -24,22 +24,16 @@ export interface ClassifiedPage {
   name: string;
 }
 
-export interface ClassifiedResolver {
-  resolver: ResolverInfo;
+export interface ClassifiedOperation {
+  operation: Operation;
   quadrant: Quadrant;
-  /** Pages that call this resolver (only for user_capability). */
+  /** Pages that call this operation (only for user_capability). */
   pages: ClassifiedPage[];
   reason: string;
 }
 
-const NOISE_NAMES = new Set([
-  "__typename",
-  "__schema",
-  "__type",
-  "node",
-  "nodes",
-  "_entities",
-  "_service",
+// Cross-protocol noise — operations no user asks about, regardless of source.
+const UNIVERSAL_NOISE = new Set([
   "health",
   "healthcheck",
   "healthCheck",
@@ -48,35 +42,33 @@ const NOISE_NAMES = new Set([
   "readiness",
   "liveness",
   "version",
+  "__typename",
 ]);
 
-/** Obvious, no-judgement-needed noise — filtered mechanically. */
-export function isMechanicalNoise(name: string): boolean {
-  if (NOISE_NAMES.has(name)) return true;
-  if (name.startsWith("__")) return true;
-  return false;
+export function isUniversalNoise(name: string): boolean {
+  return UNIVERSAL_NOISE.has(name) || name.startsWith("__");
 }
 
-export function classify(resolvers: ResolverInfo[], scan: ScanResult): ClassifiedResolver[] {
-  const callsByResolver = new Map<string, CallSite[]>();
-  for (const site of scan.sites) {
-    const arr = callsByResolver.get(site.resolver) ?? [];
+export function classify(operations: Operation[], usage: UsageResult): ClassifiedOperation[] {
+  const callsByOperation = new Map<string, CallSite[]>();
+  for (const site of usage.sites) {
+    const arr = callsByOperation.get(site.operation) ?? [];
     arr.push(site);
-    callsByResolver.set(site.resolver, arr);
+    callsByOperation.set(site.operation, arr);
   }
-  // If the scan produced ANY unresolved (dynamic) site, it has blind spots and
-  // cannot confidently rule out a call for any resolver.
-  const scannerConfident = scan.unresolved.length === 0;
+  // Any unresolved (dynamic) site means the scan has blind spots and can't
+  // confidently rule out a call for any operation.
+  const scannerConfident = usage.unresolved.length === 0;
 
-  return resolvers.map((resolver) => {
-    if (isMechanicalNoise(resolver.name)) {
-      return { resolver, quadrant: "noise" as const, pages: [], reason: "mechanical noise (introspection/Relay/health)" };
+  return operations.map((operation) => {
+    if (operation.noise || isUniversalNoise(operation.name)) {
+      return { operation, quadrant: "noise" as const, pages: [], reason: "mechanical noise" };
     }
-    const calls = callsByResolver.get(resolver.name);
+    const calls = callsByOperation.get(operation.name);
     if (calls && calls.length) {
       const pages = dedupePages(calls.map((c) => ({ id: c.pageId, name: c.pageName })));
       return {
-        resolver,
+        operation,
         quadrant: "user_capability" as const,
         pages,
         reason: `called from ${pages.map((p) => p.name).join(", ")}`,
@@ -84,14 +76,14 @@ export function classify(resolvers: ResolverInfo[], scan: ScanResult): Classifie
     }
     if (scannerConfident) {
       return {
-        resolver,
+        operation,
         quadrant: "no_entry" as const,
         pages: [],
         reason: "no frontend call found (scanner confident — no dynamic sites)",
       };
     }
     return {
-      resolver,
+      operation,
       quadrant: "unknown" as const,
       pages: [],
       reason: "no static call found, but the scan has blind spots (unresolved dynamic sites exist)",
@@ -105,8 +97,7 @@ function dedupePages(pages: ClassifiedPage[]): ClassifiedPage[] {
   return [...byId.values()];
 }
 
-/** Summary counts per quadrant — for build/check reporting. */
-export function quadrantCounts(classified: ClassifiedResolver[]): Record<Quadrant, number> {
+export function quadrantCounts(classified: ClassifiedOperation[]): Record<Quadrant, number> {
   const counts: Record<Quadrant, number> = { user_capability: 0, no_entry: 0, unknown: 0, noise: 0 };
   for (const c of classified) counts[c.quadrant]++;
   return counts;

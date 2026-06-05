@@ -1,53 +1,54 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classify, isMechanicalNoise } from "../src/core/classify.js";
-import type { ResolverInfo } from "../src/core/introspect.js";
-import type { ScanResult } from "../src/core/scan-frontend.js";
+import { classify, isUniversalNoise } from "../src/core/classify.js";
+import type { Operation } from "../src/core/operation.js";
+import type { UsageResult } from "../src/core/frontend-ast.js";
 
-const r = (name: string, extra: Partial<ResolverInfo> = {}): ResolverInfo => ({
+const op = (name: string, extra: Partial<Operation> = {}): Operation => ({
+  sourceId: "graphql",
   name,
   kind: "query",
-  objectTypes: [],
-  deprecated: false,
+  entities: [],
   ...extra,
 });
 
-const emptyScan: ScanResult = { sites: [], unresolved: [], pages: [] };
+const emptyUsage: UsageResult = { sites: [], unresolved: [], pages: [] };
 
-test("mechanical noise is recognised", () => {
-  for (const n of ["__typename", "node", "_entities", "health", "__schema"]) {
-    assert.equal(isMechanicalNoise(n), true, n);
+test("cross-protocol noise is recognised; real ops are not", () => {
+  for (const n of ["health", "ping", "__typename", "readiness"]) {
+    assert.equal(isUniversalNoise(n), true, n);
   }
-  assert.equal(isMechanicalNoise("todayRevenue"), false);
+  assert.equal(isUniversalNoise("todayRevenue"), false);
+  assert.equal(isUniversalNoise("node"), false, "Relay node is source-specific noise, not universal");
 });
 
-test("called resolver → user_capability with its pages", () => {
-  const scan: ScanResult = {
-    sites: [{ resolver: "todayRevenue", kind: "query", pageId: "page.finance", pageName: "Finance", file: "Finance.tsx" }],
+test("called operation → user_capability with its pages", () => {
+  const usage: UsageResult = {
+    sites: [{ operation: "todayRevenue", kind: "query", pageId: "page.finance", pageName: "Finance", file: "Finance.tsx" }],
     unresolved: [],
     pages: [],
   };
-  const [c] = classify([r("todayRevenue")], scan);
+  const [c] = classify([op("todayRevenue")], usage);
   assert.equal(c.quadrant, "user_capability");
   assert.deepEqual(c.pages, [{ id: "page.finance", name: "Finance" }]);
 });
 
-test("uncalled resolver → no_entry when the scanner is confident (no unresolved sites)", () => {
-  const [c] = classify([r("exportReport")], emptyScan);
+test("uncalled operation → no_entry when the scanner is confident (no unresolved sites)", () => {
+  const [c] = classify([op("exportReport")], emptyUsage);
   assert.equal(c.quadrant, "no_entry");
 });
 
-test("uncalled resolver → unknown when the scan has blind spots", () => {
-  const scan: ScanResult = {
+test("uncalled operation → unknown when the scan has blind spots", () => {
+  const usage: UsageResult = {
     sites: [],
     unresolved: [{ file: "Messy.tsx", reason: "dynamic", snippet: "useQuery(q[x])" }],
     pages: [],
   };
-  const [c] = classify([r("exportReport")], scan);
+  const [c] = classify([op("exportReport")], usage);
   assert.equal(c.quadrant, "unknown");
 });
 
-test("noise resolver is classified noise regardless of calls", () => {
-  const [c] = classify([r("node")], emptyScan);
+test("a source-flagged noise operation is classified noise regardless of calls", () => {
+  const [c] = classify([op("node", { noise: true })], emptyUsage);
   assert.equal(c.quadrant, "noise");
 });

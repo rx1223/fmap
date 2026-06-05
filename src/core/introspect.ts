@@ -16,13 +16,23 @@ import {
   type GraphQLNamedType,
   type IntrospectionQuery,
 } from "graphql";
-import type { ProjectConfig } from "../config/project.js";
 
 /**
- * M1 — deterministic, no LLM. Turn a GraphQL schema (live endpoint or local
- * SDL) into a flat resolver list. introspection gives a "resolver list", not a
- * "capability list" — the semantic re-slicing happens later (M3) with the LLM.
+ * Deterministic GraphQL introspection (no LLM). Turn a schema (live endpoint or
+ * local SDL) into a flat resolver list. introspection gives a "resolver list",
+ * not a "capability list" — the semantic re-slicing happens later with the LLM.
+ *
+ * Used by the GraphQL CapabilitySource; this module is GraphQL-specific by
+ * design and knows nothing about the generic pipeline.
  */
+
+/** The schema-location half of a GraphQL source config. */
+export interface GraphqlSchemaConfig {
+  sdlPath?: string;
+  endpoint?: string;
+  /** Header name → ENV VAR NAME (never a literal secret). */
+  headers?: Record<string, string>;
+}
 
 export type ResolverKind = "query" | "mutation";
 
@@ -38,25 +48,23 @@ export interface ResolverInfo {
   deprecated: boolean;
 }
 
-/** Resolve the schema from config: SDL file takes precedence, else live endpoint. */
+/** Resolve the schema: SDL file takes precedence, else live endpoint. */
 export async function loadSchema(
-  cfg: ProjectConfig,
+  schema: GraphqlSchemaConfig,
   projectRoot: string = process.cwd(),
 ): Promise<GraphQLSchema> {
-  if (cfg.schema.sdlPath) {
-    const p = path.isAbsolute(cfg.schema.sdlPath)
-      ? cfg.schema.sdlPath
-      : path.join(projectRoot, cfg.schema.sdlPath);
+  if (schema.sdlPath) {
+    const p = path.isAbsolute(schema.sdlPath) ? schema.sdlPath : path.join(projectRoot, schema.sdlPath);
     if (!fs.existsSync(p)) {
-      throw new Error(`SDL file not found: ${p}\n  → Fix schema.sdlPath in feature-map.config.yaml.`);
+      throw new Error(`SDL file not found: ${p}\n  → Fix sdlPath in your GraphQL source config.`);
     }
     return buildSchema(fs.readFileSync(p, "utf8"));
   }
-  if (cfg.schema.endpoint) {
-    return introspectEndpoint(cfg.schema.endpoint, cfg.schema.headers ?? {});
+  if (schema.endpoint) {
+    return introspectEndpoint(schema.endpoint, schema.headers ?? {});
   }
   throw new Error(
-    "No schema source configured.\n  → Set schema.sdlPath or schema.endpoint in feature-map.config.yaml.",
+    "No GraphQL schema configured.\n  → Set sdlPath or endpoint in the graphql source of feature-map.config.yaml.",
   );
 }
 
@@ -138,12 +146,4 @@ export function coreObjectTypes(schema: GraphQLSchema): string[] {
     .map((t) => t.name)
     .filter((n) => !roots.has(n))
     .sort();
-}
-
-/** Convenience: load + extract in one call. */
-export async function introspect(
-  cfg: ProjectConfig,
-  projectRoot: string = process.cwd(),
-): Promise<ResolverInfo[]> {
-  return introspectResolvers(await loadSchema(cfg, projectRoot));
 }

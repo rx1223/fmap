@@ -4,12 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadSchema, introspectResolvers } from "../src/core/introspect.js";
-import { getScanner } from "../src/core/scan-frontend.js";
+import { graphqlSource } from "../src/core/sources/graphql.js";
+import { classify } from "../src/core/classify.js";
 import { extractCapabilities, groupByModule } from "../src/core/extract.js";
 import { writeCapabilitiesByModule, loadAllCapabilities } from "../src/core/yaml-store.js";
-import { defaultProjectConfig } from "../src/config/project.js";
-import { scaffoldFeatureMap } from "../src/config/project.js";
+import { defaultProjectConfig, scaffoldFeatureMap } from "../src/config/project.js";
 import { StubProvider } from "./helpers/stub-provider.js";
 import type { Capability } from "../src/core/model.js";
 
@@ -20,25 +19,28 @@ const frontendDir = path.join(here, "fixtures/frontend");
 // Canned LLM output: demonstrates MERGE (3 revenue resolvers → 1), SPLIT
 // (updateMembershipCard → 3 card actions), and DROP (legacyRevenue, login omitted).
 const CANNED = JSON.stringify([
-  { id: "view_store_revenue", name: "查看店铺营业额", statement: "在财务页能看到店铺的实时与历史营业额", module: "store-finance", resolvers: ["todayRevenue", "revenueByRange", "revenueBreakdown"] },
-  { id: "export_revenue_report", name: "导出营业报表", statement: "导出指定店铺的营业报表", module: "store-finance", resolvers: ["exportReport"] },
-  { id: "view_store_detail", name: "查看店铺详情", statement: "查看指定店铺的详情", module: "store-finance", resolvers: ["store"] },
-  { id: "create_user", name: "创建用户", statement: "在用户管理页创建新用户", module: "user", resolvers: ["createUser"] },
-  { id: "delete_user", name: "删除用户", statement: "在用户管理页删除用户", module: "user", resolvers: ["deleteUser"] },
-  { id: "view_current_user", name: "查看当前登录用户", statement: "在用户管理页查看当前登录用户", module: "user", resolvers: ["currentUser"] },
-  { id: "view_user_detail", name: "查看用户详情", statement: "查看指定用户的详情", module: "user", resolvers: ["user"] },
-  { id: "renew_card", name: "续费会员卡", statement: "在收银台为用户续费会员卡", module: "membership-card", resolvers: ["updateMembershipCard"] },
-  { id: "upgrade_card", name: "升级会员卡", statement: "在收银台为用户升级会员卡", module: "membership-card", resolvers: ["updateMembershipCard"] },
-  { id: "replace_card", name: "更换会员卡", statement: "在收银台为用户更换会员卡", module: "membership-card", resolvers: ["updateMembershipCard"] },
-  { id: "purchase_trial_card", name: "购买体验卡", statement: "在收银台给用户购买体验卡", module: "membership-card", resolvers: ["purchaseTrialCard"] },
+  { id: "view_store_revenue", name: "查看店铺营业额", statement: "在财务页能看到店铺的实时与历史营业额", module: "store-finance", operations: ["todayRevenue", "revenueByRange", "revenueBreakdown"] },
+  { id: "export_revenue_report", name: "导出营业报表", statement: "导出指定店铺的营业报表", module: "store-finance", operations: ["exportReport"] },
+  { id: "view_store_detail", name: "查看店铺详情", statement: "查看指定店铺的详情", module: "store-finance", operations: ["store"] },
+  { id: "create_user", name: "创建用户", statement: "在用户管理页创建新用户", module: "user", operations: ["createUser"] },
+  { id: "delete_user", name: "删除用户", statement: "在用户管理页删除用户", module: "user", operations: ["deleteUser"] },
+  { id: "view_current_user", name: "查看当前登录用户", statement: "在用户管理页查看当前登录用户", module: "user", operations: ["currentUser"] },
+  { id: "view_user_detail", name: "查看用户详情", statement: "查看指定用户的详情", module: "user", operations: ["user"] },
+  { id: "renew_card", name: "续费会员卡", statement: "在收银台为用户续费会员卡", module: "membership-card", operations: ["updateMembershipCard"] },
+  { id: "upgrade_card", name: "升级会员卡", statement: "在收银台为用户升级会员卡", module: "membership-card", operations: ["updateMembershipCard"] },
+  { id: "replace_card", name: "更换会员卡", statement: "在收银台为用户更换会员卡", module: "membership-card", operations: ["updateMembershipCard"] },
+  { id: "purchase_trial_card", name: "购买体验卡", statement: "在收银台给用户购买体验卡", module: "membership-card", operations: ["purchaseTrialCard"] },
 ]);
 
 async function extractFixture() {
-  const cfg = defaultProjectConfig({ schema: { sdlPath: schemaPath }, frontend: { root: frontendDir } });
-  const schema = await loadSchema(cfg, here);
-  const resolvers = introspectResolvers(schema);
-  const scan = getScanner().scan(frontendDir, here);
-  const drafts = await extractCapabilities({ resolvers, scan, config: cfg, provider: new StubProvider(CANNED) });
+  const cfg = defaultProjectConfig({
+    sources: [{ type: "graphql", sdlPath: schemaPath }],
+    frontend: { root: frontendDir },
+  });
+  const operations = await graphqlSource.loadOperations({ type: "graphql", sdlPath: schemaPath }, here);
+  const usage = graphqlSource.scanUsage(operations, frontendDir, here);
+  const classified = classify(operations, usage);
+  const drafts = await extractCapabilities({ classified, sites: usage.sites, config: cfg, provider: new StubProvider(CANNED) });
   return { drafts, cfg };
 }
 

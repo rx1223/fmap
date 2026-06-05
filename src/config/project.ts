@@ -1,31 +1,27 @@
 import path from "node:path";
 import fs from "node:fs";
 import YAML from "yaml";
-import { dirExists, fileExists, firstExistingDir, walkFiles } from "../core/fs-utils.js";
+import { dirExists, fileExists, firstExistingDir } from "../core/fs-utils.js";
+import type { SourceConfig } from "../core/sources/source.js";
 
 /**
  * Project-level config — committed, travels with the code so map changes ride
- * the same PR. Holds schema location, frontend root, and the tier-2 strategy
- * knobs (all defaulted). NEVER holds credentials.
+ * the same PR. Holds the capability sources, frontend root, and tier-2 strategy
+ * knobs (all defaulted). Source-agnostic: GraphQL is just one entry in
+ * `sources`. NEVER holds credentials.
  */
 
 export const FEATURE_MAP_DIR = "feature-map";
 export const CONFIG_FILENAME = "feature-map.config.yaml";
 
-/** Whether ops-only capabilities (schema has it, frontend doesn't) are kept. */
+/** Whether ops-only capabilities (backend has it, frontend doesn't) are kept. */
 export type OpsOnlyPolicy = "include_tagged" | "exclude";
 /** "购买/续费体验卡" as one capability (coarse) or many (fine). */
 export type Granularity = "coarse" | "fine";
 
 export interface ProjectConfig {
-  schema: {
-    /** GraphQL endpoint URL for live introspection. */
-    endpoint?: string;
-    /** Header name -> ENV VAR NAME (never the literal value). */
-    headers?: Record<string, string>;
-    /** Path to an SDL file, relative to project root. */
-    sdlPath?: string;
-  };
+  /** Capability sources — GraphQL / OpenAPI / tRPC / route handlers / … */
+  sources: SourceConfig[];
   frontend: {
     /** Frontend source root, relative to project root. */
     root: string;
@@ -41,11 +37,7 @@ export interface ProjectConfig {
 
 export function defaultProjectConfig(detected?: Partial<ProjectConfig>): ProjectConfig {
   return {
-    schema: {
-      sdlPath: detected?.schema?.sdlPath,
-      endpoint: detected?.schema?.endpoint,
-      headers: detected?.schema?.headers,
-    },
+    sources: detected?.sources ?? [],
     frontend: {
       root: detected?.frontend?.root ?? "src",
     },
@@ -88,9 +80,13 @@ export function readProjectConfig(cwd = process.cwd()): ProjectConfig {
       `No feature-map found in this project. Run \`fmap init\` first.`,
     );
   }
-  const parsed = YAML.parse(fs.readFileSync(p, "utf8")) as Partial<ProjectConfig>;
+  const parsed = (YAML.parse(fs.readFileSync(p, "utf8")) ?? {}) as Record<string, unknown>;
+  // Migrate the pre-sources shape: { schema: {...} } → sources: [{ type:"graphql", ... }].
+  if (!parsed.sources && parsed.schema && typeof parsed.schema === "object") {
+    parsed.sources = [{ type: "graphql", ...(parsed.schema as Record<string, unknown>) }];
+  }
   // Merge over defaults so older/partial configs stay valid.
-  return defaultProjectConfig(parsed);
+  return defaultProjectConfig(parsed as Partial<ProjectConfig>);
 }
 
 export function writeProjectConfig(cfg: ProjectConfig, cwd = process.cwd()): void {
@@ -105,8 +101,13 @@ function renderConfigYaml(cfg: ProjectConfig): string {
   const header =
     "# fmap project config — committed, travels with the code.\n" +
     "# NEVER put credentials here; the API key lives in global config / env.\n" +
-    "# Set either schema.sdlPath (a local SDL file) or schema.endpoint (live\n" +
-    "# introspection). For endpoint headers, give the ENV VAR NAME, not the value:\n" +
+    "# `sources` lists the capability sources. Each has a `type` and its own\n" +
+    "# fields, e.g.:\n" +
+    "#   - type: graphql        # sdlPath: schema.graphql   OR   endpoint: https://…\n" +
+    "#   - type: openapi        # specPath: openapi.yaml\n" +
+    "#   - type: trpc           # routerPath: server/router.ts\n" +
+    "#   - type: route          # root: server\n" +
+    "# For any endpoint headers, give the ENV VAR NAME, not the value:\n" +
     "#   headers: { Authorization: MY_TOKEN_ENV_VAR }\n\n";
   return header + doc.toString();
 }
@@ -130,53 +131,12 @@ export function scaffoldFeatureMap(cfg: ProjectConfig, cwd = process.cwd()): voi
 }
 
 // ---------------------------------------------------------------------------
-// Auto-detection (tier-1): scan the repo, propose a default the user reviews.
+// Auto-detection (tier-1): frontend root. Source detection lives in the source
+// registry (core/sources) so the config layer stays protocol-agnostic.
 // ---------------------------------------------------------------------------
 
-export interface DetectionResult {
-  sdlPath?: string;
-  frontendRoot?: string;
-  endpointGuess?: string;
-}
-
-/** Best-effort detection of schema file + frontend root, never fatal. */
-export function detectProject(cwd = process.cwd()): DetectionResult {
-  return {
-    sdlPath: detectSdlPath(cwd),
-    frontendRoot: detectFrontendRoot(cwd),
-    endpointGuess: detectEndpoint(cwd),
-  };
-}
-
-function detectSdlPath(cwd: string): string | undefined {
-  // Prefer conventionally-named files at the root, then the largest .graphql.
-  const preferred = ["schema.graphql", "schema.gql", "schema.graphqls"];
-  for (const name of preferred) {
-    if (fileExists(path.join(cwd, name))) return name;
-  }
-  const graphqlFiles = walkFiles(cwd, {
-    filter: (p) => /\.(graphql|gql|graphqls)$/i.test(p),
-    limit: 200,
-  });
-  if (graphqlFiles.length === 0) return undefined;
-  // Pick the largest — most likely the full schema, not a single operation.
-  let best = graphqlFiles[0];
-  let bestSize = 0;
-  for (const f of graphqlFiles) {
-    try {
-      const size = fs.statSync(f).size;
-      if (size > bestSize) {
-        bestSize = size;
-        best = f;
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  return path.relative(cwd, best);
-}
-
-function detectFrontendRoot(cwd: string): string | undefined {
+/** Best-effort detection of the frontend source root, never fatal. */
+export function detectFrontendRoot(cwd: string = process.cwd()): string | undefined {
   // Common roots; pick the first that exists.
   const direct = firstExistingDir(cwd, ["src", "app", "frontend/src", "client/src", "web/src"]);
   if (direct) return direct;
@@ -192,19 +152,6 @@ function detectFrontendRoot(cwd: string): string | undefined {
     } catch {
       /* ignore */
     }
-  }
-  return undefined;
-}
-
-/** Look in common GraphQL codegen configs for an endpoint URL. */
-function detectEndpoint(cwd: string): string | undefined {
-  const candidates = ["codegen.yml", "codegen.yaml", ".graphqlrc", ".graphqlrc.yml", ".graphqlrc.yaml"];
-  for (const name of candidates) {
-    const p = path.join(cwd, name);
-    if (!fileExists(p)) continue;
-    const text = fs.readFileSync(p, "utf8");
-    const m = text.match(/https?:\/\/[^\s"'`]+/);
-    if (m) return m[0];
   }
   return undefined;
 }
