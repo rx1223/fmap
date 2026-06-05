@@ -1,5 +1,7 @@
+import path from "node:path";
 import { isInitialized, readProjectConfig } from "../config/project.js";
 import { introspect, type ResolverInfo } from "../core/introspect.js";
+import { getScanner, type ScanResult } from "../core/scan-frontend.js";
 
 export interface BuildOptions {
   dryRun?: boolean;
@@ -19,15 +21,35 @@ export async function buildCommand(opts: BuildOptions): Promise<void> {
 
   const cfg = readProjectConfig();
   const resolvers = await introspect(cfg);
+  const frontendRoot = path.resolve(process.cwd(), cfg.frontend.root);
+  const scan = getScanner().scan(frontendRoot);
 
   if (opts.dryRun) {
     printResolvers(resolvers);
+    printScan(scan);
     return;
   }
 
-  console.log(`Introspected ${resolvers.length} resolvers.`);
+  console.log(`Introspected ${resolvers.length} resolvers; scanned ${scan.sites.length} call-sites.`);
   console.log("build: the semantic extraction pipeline lands in M3.");
-  console.log("       Run `fmap build --dry-run` to preview the resolver list.");
+  console.log("       Run `fmap build --dry-run` to preview the resolver list + call-site map.");
+}
+
+function printScan(scan: ScanResult): void {
+  console.log(`\nFrontend call-sites: ${scan.sites.length} resolved, ${scan.unresolved.length} UNRESOLVED`);
+  if (scan.sites.length) {
+    console.log("\nRESOLVER → PAGE (mounts, free from call-sites)");
+    const width = Math.min(28, Math.max(...scan.sites.map((s) => s.resolver.length)) + 2);
+    for (const s of scan.sites) {
+      console.log(`  ${s.resolver.padEnd(width)}→ ${s.pageName}  (${s.file})`);
+    }
+  }
+  if (scan.unresolved.length) {
+    console.log("\nUNRESOLVED (held as blind spots — never force-guessed)");
+    for (const u of scan.unresolved) {
+      console.log(`  • ${u.reason}\n      ${u.file}: ${u.snippet}`);
+    }
+  }
 }
 
 function printResolvers(resolvers: ResolverInfo[]): void {
