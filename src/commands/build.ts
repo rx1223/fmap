@@ -1,12 +1,13 @@
 import path from "node:path";
 import { isInitialized, readProjectConfig } from "../config/project.js";
 import { dirExists } from "../core/fs-utils.js";
-import { introspect, type ResolverInfo } from "../core/introspect.js";
+import { loadSchema, introspectResolvers, type ResolverInfo } from "../core/introspect.js";
 import { getScanner, type ScanResult } from "../core/scan-frontend.js";
 import { classify, quadrantCounts, type ClassifiedResolver } from "../core/classify.js";
 import { extractCapabilities } from "../core/extract.js";
 import { reconcile } from "../core/reconcile.js";
-import { loadAllCapabilities, persistReconciled } from "../core/yaml-store.js";
+import { loadAllCapabilities, persistReconciled, loadSitemap, saveSitemap } from "../core/yaml-store.js";
+import { buildSitemap } from "../core/sitemap.js";
 import { getProvider } from "../providers/index.js";
 
 export interface BuildOptions {
@@ -27,7 +28,8 @@ export async function buildCommand(opts: BuildOptions): Promise<void> {
   }
 
   const cfg = readProjectConfig(cwd);
-  const resolvers = await introspect(cfg, cwd);
+  const schema = await loadSchema(cfg, cwd);
+  const resolvers = introspectResolvers(schema);
 
   const frontendRoot = path.resolve(cwd, cfg.frontend.root);
   if (!dirExists(frontendRoot)) {
@@ -57,6 +59,10 @@ export async function buildCommand(opts: BuildOptions): Promise<void> {
   );
   persistReconciled(result.caps, loaded.fileOf, draftModuleById, loaded.byFile.keys(), cwd);
 
+  // Sitemap (deterministic, no LLM): pages + tree + entity hubs from the frontend.
+  const sitemap = buildSitemap({ scan, schema, frontendRoot, projectRoot: cwd, existing: loadSitemap(cwd) });
+  saveSitemap(sitemap, cwd);
+
   const counts = quadrantCounts(classified);
   console.log(`\n✓ feature-map/capabilities/ updated.`);
   console.log(
@@ -65,6 +71,7 @@ export async function buildCommand(opts: BuildOptions): Promise<void> {
   console.log(
     `  quadrants: ${counts.user_capability} user · ${counts.no_entry} no-entry · ${counts.unknown} unknown · ${counts.noise} noise(dropped)`,
   );
+  console.log(`  sitemap: ${sitemap.pages.length} page(s), ${sitemap.transitions.length} special transition(s) → feature-map/sitemap.yaml`);
   console.log("  new entries are status: pending — a human approves by editing YAML; human edits are preserved.");
 }
 
