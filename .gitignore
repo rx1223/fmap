@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# fmap local, never-committed state
+.feature-map.local
+
+# local env / secrets — the API key must never enter a repo
+.env
+.env.*

@@ -1,0 +1,51 @@
+{
+  "name": "fmap",
+  "version": "0.1.0",
+  "description": "Extract a feature capability map from a codebase: what a system can do, where it lives, and how to reach it.",
+  "type": "module",
+  "bin": {
+    "fmap": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "test": "tsx --test test/*.test.ts",
+    "fmap": "tsx src/cli.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "graphql",
+    "cli",
+    "codebase",
+    "capability-map",
+    "feature-map",
+    "sitemap",
+    "ai",
+    "agent",
+    "documentation"
+  ],
+  "license": "MIT",
+  "author": "rx1223",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.100.1",
+    "commander": "^12.1.0",
+    "graphql": "^16.14.1",
+    "prompts": "^2.4.2",
+    "ts-morph": "^28.0.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "~20.0.0",
+    "@types/prompts": "^2.4.9",
+    "tsx": "^4.22.4",
+    "typescript": "~5.7.0"
+  }
+}
