@@ -14,7 +14,23 @@ program
   .description(
     "Extract a feature capability map from a codebase: what a system can do, where it lives, and how to reach it.",
   )
-  .version("0.1.0");
+  .version("0.1.0")
+  // On any usage error (unknown command, missing arg), point to help.
+  .showHelpAfterError("(run `fmap --help` to see all commands)")
+  // Append a quick-start so the help itself guides a first-time user.
+  .addHelpText(
+    "after",
+    [
+      "",
+      "Getting started:",
+      "  $ fmap auth --claude   configure your LLM (Anthropic) key — stored globally, never in the repo",
+      "  $ fmap init            scaffold ./feature-map in your project",
+      "  $ fmap build           extract the capability map (everything starts status: pending)",
+      "  $ fmap query <text>    find a capability + how to reach it",
+      "",
+      "Run `fmap <command> --help` for details on a command.",
+    ].join("\n"),
+  );
 
 program
   .command("auth")
@@ -50,6 +66,13 @@ program
   .description("Locate capabilities by name/object (agent entry point).")
   .option("--serve", "run as an MCP server exposing find_capability/get_anchor (stub)")
   .action((text, opts) => queryCommand(text, opts));
+
+// Bare `fmap` (no args at all) → guide the user to the commands, exit 0.
+// (Unknown commands still fall through to commander, which errors + hints.)
+if (process.argv.slice(2).length === 0) {
+  program.outputHelp();
+  process.exit(0);
+}
 
 program.parseAsync(process.argv).catch((err: unknown) => {
   console.error(`\nError: ${err instanceof Error ? err.message : String(err)}`);
