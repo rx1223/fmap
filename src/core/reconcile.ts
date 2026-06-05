@@ -81,7 +81,7 @@ export function mergeExisting(existing: Capability, draft: Capability): Capabili
     status,
     // machine-owned — refreshed from code
     object: draft.object ?? [],
-    resolvers: draft.resolvers ?? [],
+    operations: draft.operations ?? [],
     // don't erase a human/ops-supplied anchor when the machine has none
     code_anchor: draft.code_anchor ?? existing.code_anchor,
     // union so a manually-added mount survives a rebuild
@@ -107,8 +107,8 @@ function normalize(c: Capability): Capability {
     source: c.source,
   };
   if (c.code_anchor) out.code_anchor = c.code_anchor;
-  const resolvers = c.resolvers ? [...c.resolvers].sort() : [];
-  if (resolvers.length) out.resolvers = resolvers;
+  const operations = c.operations ? [...c.operations].sort() : [];
+  if (operations.length) out.operations = operations;
   return out;
 }
 

@@ -38,8 +38,8 @@ export interface Capability {
   mounted_on: string[];
   /** "src/services/card.ts#purchaseTrialCard" — the ONLY locator for side-effect caps. */
   code_anchor?: string;
-  /** Underlying GraphQL operations this capability is sliced from. */
-  resolvers?: string[];
+  /** Underlying operation ids this capability is sliced from (resolvers / endpoints / procedures). */
+  operations?: string[];
   status: CapabilityStatus;
   source: CapabilitySource;
 }
@@ -81,13 +81,13 @@ export const HUMAN_OWNED_FIELDS = ["name", "statement", "status"] as const;
 
 /**
  * Fields the machine owns — reconcile refreshes these from code each build.
- * `object` is re-derived from GraphQL types; `resolvers`/`code_anchor` are
+ * `object` is re-derived from backend types; `operations`/`code_anchor` are
  * re-located. `mounted_on` is special: refreshed from call-sites but
  * union-merged with the existing value so manual mount fixes survive
  * (see reconcile.ts). `source` is preserved as original provenance.
  */
 export const MACHINE_OWNED_FIELDS = [
   "code_anchor",
-  "resolvers",
+  "operations",
   "object",
 ] as const;

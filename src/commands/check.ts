@@ -46,14 +46,14 @@ export async function checkCommand(): Promise<void> {
 
   const { caps } = loadAllCapabilities(cwd);
   const live = caps.filter((c) => c.status !== "deprecated");
-  const covered = new Set(live.flatMap((c) => c.resolvers ?? []));
+  const covered = new Set(live.flatMap((c) => c.operations ?? []));
 
   const staleOperations: { id: string; missing: string[] }[] = [];
   const vanishedApproved: string[] = [];
   const deadAnchors: { id: string; file: string }[] = [];
 
   for (const c of live) {
-    const refs = c.resolvers ?? [];
+    const refs = c.operations ?? [];
     const missing = refs.filter((r) => !operationNames.has(r));
     if (missing.length) staleOperations.push({ id: c.id, missing });
     if (c.status === "approved" && refs.length > 0 && refs.every((r) => !operationNames.has(r))) {

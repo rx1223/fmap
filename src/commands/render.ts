@@ -66,13 +66,13 @@ function renderCapabilities(byFile: Map<string, Capability[]>, pageName: Map<str
     const caps = [...byFile.get(file)!].sort((a, b) => a.id.localeCompare(b.id));
     if (!caps.length) continue;
     out.push(`## ${moduleName(file)}`, "");
-    out.push("| Status | Capability | Statement | Pages | Resolvers | Anchor |");
+    out.push("| Status | Capability | Statement | Pages | Operations | Anchor |");
     out.push("|---|---|---|---|---|---|");
     for (const c of caps) {
       const pages = c.mounted_on.map((id) => pageName.get(id) ?? id).join(", ") || "—";
-      const resolvers = (c.resolvers ?? []).join(", ") || "—";
+      const operations = (c.operations ?? []).join(", ") || "—";
       out.push(
-        `| ${STATUS_MARK[c.status]} | ${cell(c.name)} | ${cell(c.statement)} | ${cell(pages)} | ${cell(resolvers)} | ${cell(c.code_anchor) || "—"} |`,
+        `| ${STATUS_MARK[c.status]} | ${cell(c.name)} | ${cell(c.statement)} | ${cell(pages)} | ${cell(operations)} | ${cell(c.code_anchor) || "—"} |`,
       );
     }
     out.push("");

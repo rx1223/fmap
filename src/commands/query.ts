@@ -63,7 +63,7 @@ function scoreOf(c: Capability, q: string): number {
   if (c.id.toLowerCase().includes(q)) score += 40;
   if (c.object.some((o) => o.toLowerCase().includes(q))) score += 30;
   if (c.statement.toLowerCase().includes(q)) score += 20;
-  if ((c.resolvers ?? []).some((r) => r.toLowerCase().includes(q))) score += 15;
+  if ((c.operations ?? []).some((r) => r.toLowerCase().includes(q))) score += 15;
   // Deprioritise deprecated/unknown so live capabilities surface first.
   if (c.status === "deprecated") score -= 50;
   if (c.status === "unknown") score -= 5;
@@ -74,7 +74,7 @@ function printCapability(c: Capability, sitemap: Sitemap): void {
   console.log(`● ${c.name}   [${c.id}]   (${c.status})`);
   console.log(`    ${c.statement}`);
   if (c.object.length) console.log(`    objects:   ${c.object.join(", ")}`);
-  if (c.resolvers?.length) console.log(`    resolvers: ${c.resolvers.join(", ")}`);
+  if (c.operations?.length) console.log(`    operations: ${c.operations.join(", ")}`);
   console.log(`    anchor:    ${c.code_anchor ?? "(none — follow the resolvers into the backend)"}`);
   if (c.mounted_on.length) {
     for (const pageId of c.mounted_on) {

@@ -50,7 +50,7 @@ test("MERGE: three revenue resolvers collapse into one capability", async () => 
   const { drafts } = await extractFixture();
   const rev = byId(drafts, "cap.view_store_revenue");
   assert.ok(rev, "cap.view_store_revenue exists");
-  assert.deepEqual(rev!.resolvers, ["revenueBreakdown", "revenueByRange", "todayRevenue"]);
+  assert.deepEqual(rev!.operations, ["revenueBreakdown", "revenueByRange", "todayRevenue"]);
   assert.ok(rev!.object.includes("Revenue") && rev!.object.includes("RevenueBreakdown"));
   // todayRevenue is called on the finance page → mounted + pending.
   assert.deepEqual(rev!.mounted_on, ["page.financepage"]);
@@ -59,7 +59,7 @@ test("MERGE: three revenue resolvers collapse into one capability", async () => 
 
 test("SPLIT: one mutation yields three capabilities sharing the resolver", async () => {
   const { drafts } = await extractFixture();
-  const split = drafts.filter((d) => (d.resolvers ?? []).length === 1 && d.resolvers?.[0] === "updateMembershipCard");
+  const split = drafts.filter((d) => (d.operations ?? []).length === 1 && d.operations?.[0] === "updateMembershipCard");
   assert.equal(split.length, 3);
   for (const c of split) {
     assert.equal(c.status, "pending");
@@ -77,7 +77,7 @@ test("UNKNOWN quadrant → status unknown, empty mounts", async () => {
 
 test("NOISE is absent and dropped resolvers never appear", async () => {
   const { drafts } = await extractFixture();
-  const allResolvers = new Set(drafts.flatMap((d) => d.resolvers));
+  const allResolvers = new Set(drafts.flatMap((d) => d.operations));
   for (const n of ["node", "health", "__typename", "legacyRevenue", "login"]) {
     assert.equal(allResolvers.has(n), false, `${n} must not appear`);
   }

@@ -204,7 +204,7 @@ function buildDraft(
     statement,
     object,
     mounted_on: pageList,
-    resolvers: [...operations].sort(),
+    operations: [...operations].sort(),
     status,
     source: "introspection",
     module: moduleSlug(module),

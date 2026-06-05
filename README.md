@@ -2,7 +2,7 @@
 
 > Extract a **feature capability map** from a codebase — *what a system can do, where it lives, and how to reach it.*
 
-`fmap` reads your GraphQL schema and your frontend, then produces a small, verifiable map of your product's capabilities. It exists to serve two readers:
+`fmap` reads your backend (GraphQL, REST/OpenAPI, tRPC, or plain route handlers) and your frontend, then produces a small, verifiable map of your product's capabilities. It does not presuppose a project structure — the capability source is pluggable and auto-detected. It exists to serve two readers:
 
 - **AI agents** — locate a feature fast (and follow an anchor into the code) instead of grepping the whole repo.
 - **operators** — verify each capability by hand, one falsifiable line at a time.
@@ -13,7 +13,7 @@ It is **not** a knowledge base and **not** API documentation.
 
 > **The map stores WHERE, not HOW.** It records where a capability lives and how to reach it. It never records the implementation or the business rules.
 
-"How many trial cards can a user buy?" is a *rule* — it lives in code (`if count >= N`) or config, and it changes constantly. The map refuses to answer it. Instead it points an agent to the right resolver/anchor to **read the rule live**. That is why the map doesn't rot: implementation churns, but *where the feature lives* rarely moves.
+"How many trial cards can a user buy?" is a *rule* — it lives in code (`if count >= N`) or config, and it changes constantly. The map refuses to answer it. Instead it points an agent to the right operation/anchor to **read the rule live**. That is why the map doesn't rot: implementation churns, but *where the feature lives* rarely moves.
 
 If you ever catch the map storing a limit, a threshold, or an `if`-result — that's a bug. It belongs in code, reached via the anchor.
 
@@ -29,11 +29,11 @@ npm run build
 npm link        # makes `fmap` available on your PATH
 ```
 
-Then, in any TypeScript/React + GraphQL project:
+Then, in any TS/JS project (GraphQL, REST/OpenAPI, tRPC, or route handlers):
 
 ```bash
 fmap auth --claude   # configure the LLM (stored globally, never in your repo)
-fmap init            # scaffold ./feature-map, auto-detect schema + frontend
+fmap init            # scaffold ./feature-map, auto-detect source(s) + frontend
 fmap build           # extract a draft capability map (everything: status: pending)
 fmap query 营业额     # locate a capability → anchor → how to reach it
 fmap render          # generate human-readable md views
@@ -45,8 +45,8 @@ fmap check           # detect drift between the map and the code
 | Command | What it does |
 |---|---|
 | `fmap auth --claude` | Configure the LLM platform + key **globally** (XDG). Key is env-first; storing it is opt-in and `chmod 600`. |
-| `fmap init [-y]` | Scaffold `./feature-map`, auto-detect schema + frontend (tier-1), ask the tier-2 knobs (each defaulted). |
-| `fmap build [--dry-run]` | schema × frontend → capability YAML. `--dry-run` previews resolvers, call-sites, and quadrants with no LLM call. |
+| `fmap init [-y]` | Scaffold `./feature-map`, auto-detect capability source(s) + frontend (tier-1), ask the tier-2 knobs (each defaulted). |
+| `fmap build [--dry-run]` | backend × frontend → capability YAML. `--dry-run` previews operations, call-sites, and quadrants with no LLM call. |
 | `fmap check` | Read-only drift detection. Exits non-zero on drift (so CI *can* use it later). |
 | `fmap render` | Generate `feature-map/generated/*.md` views from the YAML. |
 | `fmap query [text] [--serve]` | Fuzzy-locate capabilities by name/object; prints anchor + reach path. `--serve` (MCP server) is planned. |
@@ -65,15 +65,28 @@ Adding a capability touches capabilities + mounts, not the sitemap. A nav change
 
 Semantic links between capabilities (user → order → revenue) are **not stored** — they emerge at query time from the `object` tags. Page transitions **are** stored, because they're finite, load-bearing, and can't be derived.
 
-### Capabilities come from schema × frontend call-sites
+### Capability sources (pluggable — no presupposed structure)
 
-The schema says what the system *theoretically* can do; the frontend says what users can *actually* reach. They overlap — they aren't the same set. So extraction is a cross-product, classified into four quadrants:
+A **capability source** turns a project's backend surface into *operations*. The pipeline is source-agnostic; `fmap init` detects which source(s) a project uses and records them in the config. Built-in sources:
+
+| Source | Operations from | Frontend usage matched from |
+|---|---|---|
+| **graphql** | introspection (SDL file or live endpoint) | `useQuery`/`useMutation`/… + `client.query/mutate`, named & inline `gql` |
+| **openapi** | OpenAPI v3 / Swagger v2 spec (path × method) | `fetch`/`axios` URLs → path templates (base path tolerated) |
+| **trpc** | router tree → dotted procedure paths | `trpc.a.b.useQuery()` client chains |
+| **route** | Express/Fastify routes, Next.js `app/**/route.ts` + `pages/api` | `fetch`/`axios` URLs → route paths |
+
+Adding a protocol = implement one `CapabilitySource` (`detect` / `loadOperations` / `scanUsage`) and register it. Everything downstream is unchanged. Multiple sources can be active in one project.
+
+### Operations × frontend call-sites → four quadrants
+
+The backend says what the system *theoretically* can do; the frontend says what users can *actually* reach. They overlap — they aren't the same set. So extraction is a cross-product, classified into four quadrants:
 
 ```
                   frontend HAS call      frontend NO call          scanner CAN'T TELL
-schema HAS     →  user capability        no_entry                  UNKNOWN — hold, don't
+backend HAS    →  user capability        no_entry                  UNKNOWN — hold, don't
                   + UI anchor + mount     (dead / ops-only / cron)  conclude. "didn't see it"
-schema NO      →  (non-GraphQL path)      —                         —
+backend NO     →  (non-modelled path)     —                         —
                   side-effect cap → self-growth
 ```
 
@@ -81,15 +94,15 @@ schema NO      →  (non-GraphQL path)      —                         —
 
 One frontend call (`useQuery(STORE_REVENUE)`) gives three things at once: proof the capability is real, its **UI anchor** (which page), and the **mount**. Mounts are extracted, never hand-authored.
 
-### The LLM does exactly one thing: re-slice resolvers into capabilities
+### The LLM does exactly one thing: re-slice operations into capabilities
 
-`introspection` returns a *resolver list*, not a *capability list*. The model:
+A source returns an *operation list*, not a *capability list*. The model:
 
-- **merges** several resolvers serving one goal (`todayRevenue + revenueByRange + revenueBreakdown` → "view store revenue"),
-- **splits** one resolver that bundles actions (`updateMembershipCard` → renew / upgrade / replace),
+- **merges** several operations serving one goal (`todayRevenue + revenueByRange + revenueBreakdown` → "view store revenue"),
+- **splits** one operation that bundles actions (`updateMembershipCard` → renew / upgrade / replace),
 - writes a human name + a falsifiable statement, and drops residual noise.
 
-Everything else — status, mounts, `object` tags — is computed deterministically from the classification, so the model can't invent provenance. A *called* resolver the model drops is re-emitted, never lost.
+Everything else — status, mounts, `object` tags — is computed deterministically from the classification, so the model can't invent provenance. A *called* operation the model drops is re-emitted, never lost.
 
 ### Agent proposes, human approves
 
@@ -120,25 +133,35 @@ A capability entry:
 - id: cap.purchase_trial_card
   name: 购买体验卡
   statement: 在收银台给用户购买体验卡            # falsifiable: verb + object + location
-  object: [MembershipCard]                       # chaining backbone (from GraphQL types)
+  object: [MembershipCard]                       # chaining backbone (from backend types)
   mounted_on: [page.cardpage]                    # structured, not a fragile md link
-  resolvers: [purchaseTrialCard]
+  operations: [purchaseTrialCard]                # underlying op ids (resolver / endpoint / procedure)
   status: pending                                # approved | pending | unknown | deprecated
   source: introspection                          # introspection | ops | user_question | code_pr
 ```
 
-**Humans edit the YAML; never the generated md.** On the next `fmap build`, machine fields (`object`, `resolvers`, `mounted_on`, `code_anchor`) are refreshed from code while human fields (`name`, `statement`, `status`, manual mounts) are preserved. A capability gone from code is marked `deprecated`, never deleted.
+**Humans edit the YAML; never the generated md.** On the next `fmap build`, machine fields (`object`, `operations`, `mounted_on`, `code_anchor`) are refreshed from code while human fields (`name`, `statement`, `status`, manual mounts) are preserved. A capability gone from code is marked `deprecated`, never deleted.
 
 ## Configuration
 
 Two separate places, on purpose — it's a security boundary:
 
 - **Global (user-level)** — LLM platform + credentials, under `$XDG_CONFIG_HOME/fmap` (falling back to `~/.config/fmap`). Reused across projects. **API key precedence: `ANTHROPIC_API_KEY` env var first** (recommended); persisting to the config file is opt-in and `chmod 600`. The key is **never** written into a project repo.
-- **Project-level (committed)** — `feature-map/feature-map.config.yaml`: schema location, frontend root, and the tier-2 strategy knobs (all defaulted).
+- **Project-level (committed)** — `feature-map/feature-map.config.yaml`: the capability `sources` (each with a `type` + its own fields), the frontend root, and the tier-2 strategy knobs (all defaulted). For example:
+
+  ```yaml
+  sources:
+    - type: graphql        # sdlPath: schema.graphql   OR   endpoint: https://…
+    - type: openapi        # specPath: openapi.yaml
+    - type: trpc           # routerPath: server/router.ts
+    - type: route          # root: server
+  frontend:
+    root: src
+  ```
 
 ### Three tiers of decisions
 
-1. **Auto-detect (don't ask)** — tree-vs-cross-jump nav, entity hubs, the schema × call-site classification. You review/edit a draft rather than fill from scratch.
+1. **Auto-detect (don't ask)** — which capability source(s) a project uses, tree-vs-cross-jump nav, entity hubs, the operation × call-site classification. You review/edit a draft rather than fill from scratch.
 2. **Let you choose (ask, always with a default)** — ops-only capabilities included or not, capability granularity, special cross-jump edges. CLI flags / `init` prompts; unset → default.
 3. **Hard-wired (never configurable)** — agent-proposes/human-approves, where-not-how, the three-layer model, UNKNOWN stays unknown.
 

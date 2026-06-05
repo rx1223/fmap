@@ -43,7 +43,16 @@ export function readCapabilityFile(file: string): Capability[] {
   if (!fs.existsSync(file)) return [];
   const parsed = YAML.parse(fs.readFileSync(file, "utf8"));
   if (!Array.isArray(parsed)) return [];
-  return parsed as Capability[];
+  return parsed.map(migrateCapability) as unknown as Capability[];
+}
+
+/** Tolerate the pre-rename `resolvers` field by reading it as `operations`. */
+function migrateCapability(c: Record<string, unknown>): Record<string, unknown> {
+  if (c && c.operations === undefined && Array.isArray(c.resolvers)) {
+    const { resolvers, ...rest } = c;
+    return { ...rest, operations: resolvers };
+  }
+  return c;
 }
 
 export interface LoadedCapabilities {
@@ -91,7 +100,7 @@ function normalizeForYaml(c: Capability): Record<string, unknown> {
     mounted_on: c.mounted_on ?? [],
   };
   if (c.code_anchor) out.code_anchor = c.code_anchor;
-  if (c.resolvers && c.resolvers.length) out.resolvers = c.resolvers;
+  if (c.operations && c.operations.length) out.operations = c.operations;
   out.status = c.status;
   out.source = c.source;
   return out;

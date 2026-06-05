@@ -37,7 +37,7 @@ test("human fields (name/statement/status) are preserved; machine fields refresh
       statement: "operator reworded this",
       status: "approved",
       object: ["OldType"],
-      resolvers: ["a"],
+      operations: ["a"],
       mounted_on: ["page.x"],
     }),
   ];
@@ -48,7 +48,7 @@ test("human fields (name/statement/status) are preserved; machine fields refresh
       statement: "machine statement",
       status: "pending",
       object: ["NewType"],
-      resolvers: ["a", "b"],
+      operations: ["a", "b"],
       mounted_on: ["page.x"],
     }),
   ];
@@ -57,7 +57,7 @@ test("human fields (name/statement/status) are preserved; machine fields refresh
   assert.equal(merged.statement, "operator reworded this", "human statement preserved");
   assert.equal(merged.status, "approved", "human status preserved");
   assert.deepEqual(merged.object, ["NewType"], "object refreshed from code");
-  assert.deepEqual(merged.resolvers, ["a", "b"], "resolvers refreshed from code");
+  assert.deepEqual(merged.operations, ["a", "b"], "resolvers refreshed from code");
 });
 
 test("mounted_on union preserves a manually-added mount", () => {
@@ -108,8 +108,8 @@ test("code_anchor preserved when machine has none, refreshed when it does", () =
 });
 
 test("reconcile is idempotent: feeding the result back changes nothing", () => {
-  const existing = [cap({ id: "cap.a", name: "人工", status: "approved", resolvers: ["a"] })];
-  const drafts = [cap({ id: "cap.a", name: "machine", resolvers: ["a"] })];
+  const existing = [cap({ id: "cap.a", name: "人工", status: "approved", operations: ["a"] })];
+  const drafts = [cap({ id: "cap.a", name: "machine", operations: ["a"] })];
   const once = reconcile(existing, drafts);
   const twice = reconcile(once.caps, drafts);
   assert.deepEqual(twice.updated, []);
@@ -128,7 +128,7 @@ test("VERIFY scenario end-to-end: approve + reword survives a rebuild through YA
       name: "购买体验卡",
       statement: "machine draft statement",
       object: ["MembershipCard"],
-      resolvers: ["purchaseTrialCard"],
+      operations: ["purchaseTrialCard"],
       mounted_on: ["page.cardpage"],
     });
     writeCapabilityFile(moduleFilePath("membership-card", tmp), [draft1]);
@@ -150,7 +150,7 @@ test("VERIFY scenario end-to-end: approve + reword survives a rebuild through YA
       name: "MACHINE WOULD RENAME",
       statement: "machine would reword",
       object: ["MembershipCard", "User"],
-      resolvers: ["purchaseTrialCard"],
+      operations: ["purchaseTrialCard"],
       mounted_on: ["page.cardpage"],
     });
     const result = reconcile(loaded.caps, [draft2]);
