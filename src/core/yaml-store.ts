@@ -107,6 +107,31 @@ export function writeCapabilitiesByModule(
   }
 }
 
+/**
+ * Persist reconciled capabilities. Each keeps its EXISTING file (so a human's
+ * file placement is honoured); brand-new ones go to their drafted module file.
+ * Every touched file plus any previously-existing file is rewritten, so a file
+ * emptied by deprecation/moves doesn't leave a stale copy.
+ */
+export function persistReconciled(
+  caps: Capability[],
+  fileOf: Map<string, string>,
+  moduleById: Map<string, string>,
+  previousFiles: Iterable<string>,
+  cwd: string = process.cwd(),
+): void {
+  const byFile = new Map<string, Capability[]>();
+  for (const cap of caps) {
+    const file = fileOf.get(cap.id) ?? moduleFilePath(moduleById.get(cap.id) ?? "misc", cwd);
+    const list = byFile.get(file) ?? [];
+    list.push(cap);
+    byFile.set(file, list);
+  }
+  for (const file of new Set<string>([...byFile.keys(), ...previousFiles])) {
+    writeCapabilityFile(file, byFile.get(file) ?? []);
+  }
+}
+
 // ── Sitemap ────────────────────────────────────────────────────────────────
 
 const SITEMAP_HEADER =

@@ -4,8 +4,9 @@ import { dirExists } from "../core/fs-utils.js";
 import { introspect, type ResolverInfo } from "../core/introspect.js";
 import { getScanner, type ScanResult } from "../core/scan-frontend.js";
 import { classify, quadrantCounts, type ClassifiedResolver } from "../core/classify.js";
-import { extractCapabilities, groupByModule } from "../core/extract.js";
-import { writeCapabilitiesByModule } from "../core/yaml-store.js";
+import { extractCapabilities } from "../core/extract.js";
+import { reconcile } from "../core/reconcile.js";
+import { loadAllCapabilities, persistReconciled } from "../core/yaml-store.js";
 import { getProvider } from "../providers/index.js";
 
 export interface BuildOptions {
@@ -46,15 +47,25 @@ export async function buildCommand(opts: BuildOptions): Promise<void> {
   const provider = getProvider(); // throws an actionable error if unconfigured
   console.log(`Extracting capabilities with ${provider.name} (${provider.model})…`);
   const drafts = await extractCapabilities({ resolvers, scan, config: cfg, provider });
-  writeCapabilitiesByModule(groupByModule(drafts), cwd);
+
+  // Reconcile against what's already on disk — never clobber human edits.
+  const loaded = loadAllCapabilities(cwd);
+  const draftModuleById = new Map(drafts.map((d) => [d.id, d.module]));
+  const result = reconcile(
+    loaded.caps,
+    drafts.map(({ module: _m, ...cap }) => cap),
+  );
+  persistReconciled(result.caps, loaded.fileOf, draftModuleById, loaded.byFile.keys(), cwd);
 
   const counts = quadrantCounts(classified);
-  const modules = new Set(drafts.map((d) => d.module));
-  console.log(`\n✓ Wrote ${drafts.length} capabilities across ${modules.size} module file(s) → feature-map/capabilities/`);
+  console.log(`\n✓ feature-map/capabilities/ updated.`);
+  console.log(
+    `  +${result.added.length} new · ~${result.updated.length} refreshed · =${result.unchanged.length} unchanged · ⊘${result.deprecated.length} deprecated`,
+  );
   console.log(
     `  quadrants: ${counts.user_capability} user · ${counts.no_entry} no-entry · ${counts.unknown} unknown · ${counts.noise} noise(dropped)`,
   );
-  console.log("  every entry is status: pending — a human approves by editing YAML.");
+  console.log("  new entries are status: pending — a human approves by editing YAML; human edits are preserved.");
 }
 
 function printResolvers(resolvers: ResolverInfo[]): void {
