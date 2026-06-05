@@ -1,0 +1,88 @@
+# Fixture schema for fmap tests — a small store / membership domain that
+# exercises the tricky cases: multi-capability resolvers, a side-effect buried
+# in deleteUser, introspection noise, and a deprecated field.
+
+scalar DateTime
+
+interface Node {
+  id: ID!
+}
+
+type User implements Node {
+  id: ID!
+  name: String!
+  phone: String
+  faceEnrolled: Boolean!
+}
+
+type Store implements Node {
+  id: ID!
+  name: String!
+}
+
+type MembershipCard implements Node {
+  id: ID!
+  kind: String!
+  owner: User!
+}
+
+type Revenue {
+  amount: Float!
+  currency: String!
+  at: DateTime!
+}
+
+type RevenueBreakdown {
+  byCategory: [Revenue!]!
+}
+
+type Order implements Node {
+  id: ID!
+  total: Float!
+}
+
+input CreateUserInput {
+  name: String!
+  phone: String
+}
+
+input MembershipCardInput {
+  cardId: ID!
+  action: String! # "renew" | "upgrade" | "replace" — one resolver, several capabilities
+  payload: String
+}
+
+type Query {
+  # Several queries that together form ONE capability: 查看店铺营业额
+  todayRevenue(storeId: ID!): Revenue!
+  revenueByRange(storeId: ID!, from: DateTime!, to: DateTime!): [Revenue!]!
+  revenueBreakdown(storeId: ID!): RevenueBreakdown!
+
+  user(id: ID!): User
+  store(id: ID!): Store
+  currentUser: User
+
+  # Noise: generic Relay-style node lookup + a health check.
+  node(id: ID!): Node
+  health: String!
+
+  # Deprecated → a strong dead/noise hint.
+  legacyRevenue(storeId: ID!): Float @deprecated(reason: "use todayRevenue")
+}
+
+type Mutation {
+  createUser(input: CreateUserInput!): User!
+
+  # Side-effect capability lives in here: deleting a user also wipes face data.
+  deleteUser(id: ID!): Boolean!
+
+  # One resolver, multiple capabilities (renew / upgrade / replace).
+  updateMembershipCard(input: MembershipCardInput!): MembershipCard!
+
+  purchaseTrialCard(userId: ID!, storeId: ID!): MembershipCard!
+
+  exportReport(storeId: ID!): String!
+
+  # Auth plumbing — usually not a "feature" users ask about.
+  login(phone: String!, code: String!): String!
+}
