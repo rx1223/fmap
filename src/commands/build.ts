@@ -1,7 +1,12 @@
 import path from "node:path";
 import { isInitialized, readProjectConfig } from "../config/project.js";
+import { dirExists } from "../core/fs-utils.js";
 import { introspect, type ResolverInfo } from "../core/introspect.js";
 import { getScanner, type ScanResult } from "../core/scan-frontend.js";
+import { classify, quadrantCounts, type ClassifiedResolver } from "../core/classify.js";
+import { extractCapabilities, groupByModule } from "../core/extract.js";
+import { writeCapabilitiesByModule } from "../core/yaml-store.js";
+import { getProvider } from "../providers/index.js";
 
 export interface BuildOptions {
   dryRun?: boolean;
@@ -9,30 +14,68 @@ export interface BuildOptions {
 
 /**
  * `fmap build` — schema × frontend extraction → capability YAML (status: pending).
- * M1 wires deterministic introspection + `--dry-run` preview. The frontend
- * scan, four-quadrant classify, semantic draft and reconcile land in M2–M4.
+ * introspect (M1) → scan call-sites (M2) → four-quadrant classify + LLM
+ * re-slice (M3) → reconcile with existing YAML (M4).
  */
 export async function buildCommand(opts: BuildOptions): Promise<void> {
-  if (!isInitialized()) {
+  const cwd = process.cwd();
+  if (!isInitialized(cwd)) {
     console.error("No feature-map found in this project.\n  → Run `fmap init` first.");
     process.exitCode = 1;
     return;
   }
 
-  const cfg = readProjectConfig();
-  const resolvers = await introspect(cfg);
-  const frontendRoot = path.resolve(process.cwd(), cfg.frontend.root);
-  const scan = getScanner().scan(frontendRoot);
+  const cfg = readProjectConfig(cwd);
+  const resolvers = await introspect(cfg, cwd);
+
+  const frontendRoot = path.resolve(cwd, cfg.frontend.root);
+  if (!dirExists(frontendRoot)) {
+    console.warn(`Warning: frontend root "${cfg.frontend.root}" not found — every resolver will be treated as having no UI entry.`);
+  }
+  const scan = getScanner().scan(frontendRoot, cwd);
+  const classified = classify(resolvers, scan);
 
   if (opts.dryRun) {
     printResolvers(resolvers);
     printScan(scan);
+    printQuadrants(classified);
+    console.log("\n(--dry-run: no LLM call, no YAML written.)");
     return;
   }
 
-  console.log(`Introspected ${resolvers.length} resolvers; scanned ${scan.sites.length} call-sites.`);
-  console.log("build: the semantic extraction pipeline lands in M3.");
-  console.log("       Run `fmap build --dry-run` to preview the resolver list + call-site map.");
+  const provider = getProvider(); // throws an actionable error if unconfigured
+  console.log(`Extracting capabilities with ${provider.name} (${provider.model})…`);
+  const drafts = await extractCapabilities({ resolvers, scan, config: cfg, provider });
+  writeCapabilitiesByModule(groupByModule(drafts), cwd);
+
+  const counts = quadrantCounts(classified);
+  const modules = new Set(drafts.map((d) => d.module));
+  console.log(`\n✓ Wrote ${drafts.length} capabilities across ${modules.size} module file(s) → feature-map/capabilities/`);
+  console.log(
+    `  quadrants: ${counts.user_capability} user · ${counts.no_entry} no-entry · ${counts.unknown} unknown · ${counts.noise} noise(dropped)`,
+  );
+  console.log("  every entry is status: pending — a human approves by editing YAML.");
+}
+
+function printResolvers(resolvers: ResolverInfo[]): void {
+  const queries = resolvers.filter((r) => r.kind === "query");
+  const mutations = resolvers.filter((r) => r.kind === "mutation");
+  const deprecated = resolvers.filter((r) => r.deprecated).length;
+  console.log(
+    `Schema: ${resolvers.length} resolvers — ${queries.length} queries, ${mutations.length} mutations` +
+      (deprecated ? ` (${deprecated} deprecated)` : ""),
+  );
+  const section = (title: string, list: ResolverInfo[]) => {
+    if (!list.length) return;
+    console.log(`\n${title}`);
+    const width = Math.min(34, Math.max(...list.map((r) => r.name.length)) + 2);
+    for (const r of list) {
+      const types = r.objectTypes.length ? r.objectTypes.join(", ") : "—";
+      console.log(`  ${r.name.padEnd(width)}→ ${types}${r.deprecated ? " [deprecated]" : ""}`);
+    }
+  };
+  section("QUERY", queries);
+  section("MUTATION", mutations);
 }
 
 function printScan(scan: ScanResult): void {
@@ -40,40 +83,22 @@ function printScan(scan: ScanResult): void {
   if (scan.sites.length) {
     console.log("\nRESOLVER → PAGE (mounts, free from call-sites)");
     const width = Math.min(28, Math.max(...scan.sites.map((s) => s.resolver.length)) + 2);
-    for (const s of scan.sites) {
-      console.log(`  ${s.resolver.padEnd(width)}→ ${s.pageName}  (${s.file})`);
-    }
+    for (const s of scan.sites) console.log(`  ${s.resolver.padEnd(width)}→ ${s.pageName}  (${s.file})`);
   }
   if (scan.unresolved.length) {
     console.log("\nUNRESOLVED (held as blind spots — never force-guessed)");
-    for (const u of scan.unresolved) {
-      console.log(`  • ${u.reason}\n      ${u.file}: ${u.snippet}`);
-    }
+    for (const u of scan.unresolved) console.log(`  • ${u.reason}\n      ${u.file}: ${u.snippet}`);
   }
 }
 
-function printResolvers(resolvers: ResolverInfo[]): void {
-  const queries = resolvers.filter((r) => r.kind === "query");
-  const mutations = resolvers.filter((r) => r.kind === "mutation");
-  const deprecated = resolvers.filter((r) => r.deprecated).length;
-
+function printQuadrants(classified: ClassifiedResolver[]): void {
+  const counts = quadrantCounts(classified);
   console.log(
-    `Schema: ${resolvers.length} resolvers — ${queries.length} queries, ${mutations.length} mutations` +
-      (deprecated ? ` (${deprecated} deprecated)` : ""),
+    `\nFour-quadrant classification: ${counts.user_capability} user_capability · ` +
+      `${counts.no_entry} no_entry · ${counts.unknown} unknown · ${counts.noise} noise`,
   );
-
-  const section = (title: string, list: ResolverInfo[]) => {
-    if (!list.length) return;
-    console.log(`\n${title}`);
-    const width = Math.min(34, Math.max(...list.map((r) => r.name.length)) + 2);
-    for (const r of list) {
-      const types = r.objectTypes.length ? r.objectTypes.join(", ") : "—";
-      const flag = r.deprecated ? " [deprecated]" : "";
-      console.log(`  ${r.name.padEnd(width)}→ ${types}${flag}`);
-    }
-  };
-
-  section("QUERY", queries);
-  section("MUTATION", mutations);
-  console.log("\n(These are raw resolvers, not capabilities. `fmap build` re-slices them by business meaning.)");
+  for (const q of ["user_capability", "no_entry", "unknown", "noise"] as const) {
+    const names = classified.filter((c) => c.quadrant === q).map((c) => c.resolver.name);
+    if (names.length) console.log(`  ${q.padEnd(16)} ${names.join(", ")}`);
+  }
 }
