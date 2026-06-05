@@ -1,0 +1,70 @@
+openapi: 3.0.0
+info:
+  title: Store API
+  version: 1.0.0
+servers:
+  - url: /api
+paths:
+  /stores/{storeId}/revenue/today:
+    get:
+      summary: Today's revenue for a store
+      parameters:
+        - { name: storeId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Revenue" }
+  /stores/{storeId}/revenue:
+    get:
+      summary: Revenue over a date range
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Revenue" }
+  /users:
+    post:
+      summary: Create a user
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/User" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+  /users/{id}:
+    get:
+      summary: Get a user
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+    delete:
+      summary: Delete a user
+      responses:
+        "204": { description: deleted }
+  /cards/trial:
+    post:
+      summary: Purchase a trial card
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipCard" }
+  /health:
+    get:
+      summary: health check
+      responses:
+        "200": { description: ok }
+components:
+  schemas:
+    Store: { type: object, properties: { id: { type: string } } }
+    User: { type: object, properties: { id: { type: string }, name: { type: string } } }
+    Revenue: { type: object, properties: { amount: { type: number } } }
+    MembershipCard: { type: object, properties: { id: { type: string } } }

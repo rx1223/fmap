@@ -1,10 +1,11 @@
 import type { CapabilitySource, DetectionResult } from "./source.js";
 import { graphqlSource } from "./graphql.js";
+import { openapiSource } from "./openapi.js";
 
 export type { CapabilitySource, DetectionResult, SourceConfig } from "./source.js";
 
 /** All registered capability sources. Add new protocols here. */
-export const ALL_SOURCES: CapabilitySource[] = [graphqlSource];
+export const ALL_SOURCES: CapabilitySource[] = [graphqlSource, openapiSource];
 
 export function getSource(type: string): CapabilitySource | undefined {
   return ALL_SOURCES.find((s) => s.id === type);
