@@ -157,10 +157,10 @@ function pagesApiUrl(segs: string[]): string | null {
   return "/" + after.map(dynamicSegment).join("/");
 }
 
-/** [id] → {id}, [...slug] / [[...slug]] → {slug}; literals unchanged. */
+/** [id] → {id}; [...slug] / [[...slug]] → {...slug} (catch-all); literals unchanged. */
 function dynamicSegment(seg: string): string {
   const rest = seg.match(/^\[\[?\.\.\.(.+?)\]?\]$/);
-  if (rest) return `{${rest[1]}}`;
+  if (rest) return `{...${rest[1]}}`;
   const param = seg.match(/^\[(.+?)\]$/);
   if (param) return `{${param[1]}}`;
   return seg;

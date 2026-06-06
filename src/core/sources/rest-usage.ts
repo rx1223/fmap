@@ -128,25 +128,40 @@ function bestMatch(reqPath: string, method: string, ops: Operation[]): Operation
   for (const op of ops) {
     if (op.kind !== method && op.kind !== "ALL") continue;
     const oseg = (op.name.split(" ")[1] ?? "").split("/").filter(Boolean);
-    if (oseg.length > fseg.length) continue;
-    const offset = fseg.length - oseg.length;
-    let ok = true;
-    let literals = 0;
-    for (let i = 0; i < oseg.length; i++) {
-      const o = oseg[i];
-      const f = fseg[offset + i];
-      const wild = /^\{.*\}$/.test(o) || f === "*";
-      if (wild) continue;
-      if (o !== f) {
-        ok = false;
-        break;
-      }
-      literals++;
-    }
-    if (ok && literals > bestLiterals) {
+    const literals = matchSegments(oseg, fseg);
+    if (literals !== null && literals > bestLiterals) {
       best = op;
       bestLiterals = literals;
     }
   }
   return best;
+}
+
+/** Match operation segments against request segments → literal-match count, or null. */
+function matchSegments(oseg: string[], fseg: string[]): number | null {
+  const last = oseg[oseg.length - 1];
+  if (last && /^\{\.\.\..*\}$/.test(last)) {
+    // A catch-all (`{...path}`) absorbs ≥1 trailing request segments; match the
+    // prefix suffix-aligned and require at least one segment for the catch-all.
+    const pre = oseg.slice(0, -1);
+    for (let offset = 0; offset + pre.length < fseg.length; offset++) {
+      const lit = alignLiterals(pre, fseg, offset);
+      if (lit !== null) return lit;
+    }
+    return null;
+  }
+  if (oseg.length > fseg.length) return null;
+  return alignLiterals(oseg, fseg, fseg.length - oseg.length);
+}
+
+function alignLiterals(oseg: string[], fseg: string[], offset: number): number | null {
+  let literals = 0;
+  for (let i = 0; i < oseg.length; i++) {
+    const o = oseg[i];
+    const f = fseg[offset + i];
+    if (/^\{.*\}$/.test(o) || f === "*") continue; // wildcard segment
+    if (o !== f) return null;
+    literals++;
+  }
+  return literals;
 }

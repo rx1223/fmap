@@ -73,3 +73,13 @@ test("extracted capability carries the source-supplied code anchor", async () =>
   const cap = drafts.find((d) => d.id === "cap.create_user");
   assert.ok(cap?.code_anchor?.endsWith("server/routes.ts"), `anchor should point at the handler: ${cap?.code_anchor}`);
 });
+
+test("Next catch-all route ([...path]) matches a multi-segment request URL", async () => {
+  const ops = await routeSource.loadOperations(cfg, here);
+  assert.ok(ops.some((o) => o.name === "GET /api/files/{...path}"), "catch-all op emitted with ...marker");
+  const usage = routeSource.scanUsage(ops, path.join(here, "fixtures/route/client"), here);
+  assert.ok(
+    usage.sites.some((s) => s.operation === "GET /api/files/{...path}"),
+    "fetch(`/api/files/${id}/a/b.json`) matches the catch-all",
+  );
+});
