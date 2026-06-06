@@ -107,6 +107,28 @@ test("code_anchor preserved when machine has none, refreshed when it does", () =
   assert.equal(reconcile(existing, newAnchorDraft).caps[0].code_anchor, "src/new.ts#fn");
 });
 
+test("id drift: a renamed draft re-associates with the existing cap by unique operation set", () => {
+  const existing = [cap({ id: "cap.old", name: "人工命名", status: "approved", operations: ["POST /api/jobs"] })];
+  const drafts = [cap({ id: "cap.machine_renamed", name: "machine", operations: ["POST /api/jobs"] })];
+  const res = reconcile(existing, drafts);
+  assert.deepEqual(res.deprecated, [], "no deprecation — re-associated by operations");
+  assert.deepEqual(res.added, [], "not added as a new cap");
+  const merged = res.caps.find((c) => (c.operations ?? [])[0] === "POST /api/jobs")!;
+  assert.equal(merged.id, "cap.old", "keeps the existing id");
+  assert.equal(merged.name, "人工命名", "keeps the human name");
+});
+
+test("ops-fallback does NOT mis-associate split caps that share one operation", () => {
+  const existing = [
+    cap({ id: "cap.renew", name: "续费", operations: ["updateCard"] }),
+    cap({ id: "cap.upgrade", name: "升级", operations: ["updateCard"] }),
+  ];
+  // a single drifted draft with the same shared op must NOT silently claim either
+  const drafts = [cap({ id: "cap.changed", operations: ["updateCard"] })];
+  const res = reconcile(existing, drafts);
+  assert.equal(res.added.length, 1, "ambiguous ops → treated as new, not a wrong re-association");
+});
+
 test("reconcile is idempotent: feeding the result back changes nothing", () => {
   const existing = [cap({ id: "cap.a", name: "人工", status: "approved", operations: ["a"] })];
   const drafts = [cap({ id: "cap.a", name: "machine", operations: ["a"] })];
