@@ -118,7 +118,6 @@ async function runSemanticStep(
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: user }],
     maxTokens: 8192,
-    temperature: 0,
   });
 
   const parsed = extractJson<LlmCapability[]>(raw);

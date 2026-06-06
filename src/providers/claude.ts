@@ -22,11 +22,14 @@ export class ClaudeProvider implements LlmProvider {
     // NB: annotate the result as Message. The SDK's create() has streaming
     // overloads that make a variable-typed param degrade the return to `any`;
     // annotating res keeps full type-safety on the content blocks below.
+    //
+    // `temperature` is sent ONLY when a caller explicitly sets it — newer
+    // Claude models reject/deprecate it, and omitting it uses the model default.
     const res: Anthropic.Messages.Message = await this.client.messages.create({
       model: this.model,
       max_tokens: opts.maxTokens ?? 4096,
-      temperature: opts.temperature ?? 0,
       system: opts.system,
+      ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
       messages: opts.messages.map((m) => ({ role: m.role, content: m.content })),
     });
     return res.content
