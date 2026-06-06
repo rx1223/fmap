@@ -121,7 +121,7 @@ export async function initCommand(opts: InitOptions): Promise<void> {
     console.log("    .claude/skills/feature-map/SKILL.md   (teaches agents to use the map)");
     if (hadMcp) {
       console.log("    .mcp.json already exists — add this server entry to enable the MCP tools:");
-      console.log('        "fmap": { "command": "npx", "args": ["-y", "fmap", "query", "--serve"] }');
+      console.log('        "fmap": { "command": "npx", "args": ["-y", "featuremap", "query", "--serve"] }');
     } else {
       console.log("    .mcp.json                             (registers the fmap MCP server)");
     }

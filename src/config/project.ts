@@ -152,7 +152,8 @@ UI click-path. If nothing matches, it may be a blind spot: solve by reading code
 then a human can add it to the map as \`status: pending\`.
 `;
 
-const MCP_JSON = `${JSON.stringify({ mcpServers: { fmap: { command: "npx", args: ["-y", "fmap", "query", "--serve"] } } }, null, 2)}\n`;
+// Server key stays "fmap" (what the agent calls it); the npx arg is the published package name.
+const MCP_JSON = `${JSON.stringify({ mcpServers: { fmap: { command: "npx", args: ["-y", "featuremap", "query", "--serve"] } } }, null, 2)}\n`;
 
 export interface ScaffoldOptions {
   /** Write the agent skill + .mcp.json (default true). */

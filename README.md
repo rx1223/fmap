@@ -19,14 +19,17 @@ If you ever catch the map storing a limit, a threshold, or an `if`-result — th
 
 ## Install
 
-Requires Node ≥ 18.
+Requires Node ≥ 18. The npm package is **`featuremap`**; it installs a `fmap` binary.
+
+```bash
+npm install -g featuremap     # or run ad-hoc with: npx -y featuremap <command>
+```
+
+Or from source:
 
 ```bash
 git clone https://github.com/rx1223/fmap.git
-cd fmap
-npm install
-npm run build
-npm link        # makes `fmap` available on your PATH
+cd fmap && npm install && npm run build && npm link
 ```
 
 Then, in any TS/JS project (GraphQL, REST/OpenAPI, tRPC, or route handlers):
@@ -49,9 +52,30 @@ fmap check           # detect drift between the map and the code
 | `fmap build [--dry-run]` | backend × frontend → capability YAML. `--dry-run` previews operations, call-sites, and quadrants with no LLM call. |
 | `fmap check` | Read-only drift detection. Exits non-zero on drift (so CI *can* use it later). |
 | `fmap render` | Generate `feature-map/generated/*.md` views from the YAML. |
-| `fmap query [text] [--serve]` | Fuzzy-locate capabilities by name/object; prints anchor + reach path. `--serve` (MCP server) is planned. |
+| `fmap query [text]` | Fuzzy-locate capabilities by name/object; prints anchor + reach path. |
+| `fmap query --serve` | Run a local **MCP server** (stdio) so agents can query the map as tools. |
 
 There is intentionally **no `approve` command**. In the CLI phase, *approve = a human editing `status: pending → approved` in the YAML*, then commit + PR review.
+
+## Agent integration
+
+Built for AI agents (Claude Code, Cursor, …) working in the repo. `fmap init` makes a project agent-ready out of the box (opt out with `--no-skill`):
+
+- **`.claude/skills/feature-map/SKILL.md`** — a skill that triggers on *"where is X / how do I reach Y / what can this app do"* and teaches the workflow: the map says **WHERE**, code says **HOW**; `find → open the code_anchor → read the real rule`.
+- **`.mcp.json`** — registers the MCP server: `{ "mcpServers": { "fmap": { "command": "npx", "args": ["-y", "featuremap", "query", "--serve"] } } }`.
+
+The server is **local** (stdio) — the agent spawns it with the repo as `cwd`. It serves only the small **map**, never your code; the agent opens the `code_anchor` in its own checkout. Read-only tools:
+
+| Tool | Returns |
+|---|---|
+| `find_capability(text)` | matching capabilities + statement, operations, `code_anchor`, reach path |
+| `get_anchor(id)` | the file#symbol to open and read the actual rule |
+| `list_capabilities(status?)` | all capabilities (id, name, status, statement) |
+| `how_to_reach(id)` | the UI navigation path(s) to a capability |
+
+Agents only **read**: promotion to `approved` is always a human edit — no tool mutates the map.
+
+*(How this scales: today fmap is a local per-repo tool. A future hosted/team server — GitHub App → server-side build → remote MCP — would reuse the exact same engine; it's on the roadmap, not built.)*
 
 ## How it works
 

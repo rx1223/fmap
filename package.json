@@ -1,5 +1,5 @@
 {
-  "name": "fmap",
+  "name": "featuremap",
   "version": "0.1.0",
   "description": "Extract a feature capability map from a codebase: what a system can do, where it lives, and how to reach it.",
   "type": "module",
