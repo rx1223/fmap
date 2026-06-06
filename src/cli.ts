@@ -42,6 +42,7 @@ program
   .command("init")
   .description("Scaffold ./feature-map, auto-detect schema/frontend, ask tier-2 knobs.")
   .option("-y, --yes", "accept all detected defaults without prompting")
+  .option("--no-skill", "don't scaffold the agent skill (.claude/skills) or .mcp.json")
   .action((opts) => initCommand(opts));
 
 program
