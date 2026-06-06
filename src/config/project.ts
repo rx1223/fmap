@@ -137,10 +137,15 @@ export function scaffoldFeatureMap(cfg: ProjectConfig, cwd = process.cwd()): voi
 
 /** Best-effort detection of the frontend source root, never fatal. */
 export function detectFrontendRoot(cwd: string = process.cwd()): string | undefined {
-  // Common roots; pick the first that exists.
-  const direct = firstExistingDir(cwd, ["src", "app", "frontend/src", "client/src", "web/src"]);
+  // Monorepo apps/ first — the UI usually lives here, not in packages/ (libraries).
+  const appUi = detectUiApp(cwd, "apps");
+  if (appUi) return appUi;
+  // Conventional single-app roots.
+  const direct = firstExistingDir(cwd, ["src", "app", "frontend/src", "client/src", "web/src", "web", "frontend", "client"]);
   if (direct) return direct;
-  // Monorepo: look for packages/*/src.
+  // A UI app under packages/ before falling back to any packages/*/src library.
+  const pkgUi = detectUiApp(cwd, "packages");
+  if (pkgUi) return pkgUi;
   const pkgs = path.join(cwd, "packages");
   if (dirExists(pkgs)) {
     try {
@@ -154,4 +159,38 @@ export function detectFrontendRoot(cwd: string = process.cwd()): string | undefi
     }
   }
   return undefined;
+}
+
+/** Find a UI app under `<cwd>/<container>` — one with a UI dir + a UI-framework dep. */
+function detectUiApp(cwd: string, container: string): string | undefined {
+  const dir = path.join(cwd, container);
+  if (!dirExists(dir)) return undefined;
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch {
+    return undefined;
+  }
+  for (const name of names) {
+    const appPath = path.join(dir, name);
+    const hasUiDir =
+      dirExists(path.join(appPath, "app")) ||
+      dirExists(path.join(appPath, "src")) ||
+      dirExists(path.join(appPath, "pages"));
+    if (hasUiDir && hasUiDependency(appPath)) return path.join(container, name);
+  }
+  return undefined;
+}
+
+function hasUiDependency(appPath: string): boolean {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(appPath, "package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    return ["react", "next", "vue", "svelte", "solid-js", "@angular/core", "vite", "astro"].some((d) => d in deps);
+  } catch {
+    return false;
+  }
 }

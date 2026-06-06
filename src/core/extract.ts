@@ -192,6 +192,8 @@ function buildDraft(
 ): DraftCapability {
   const object = unique(operations.flatMap((r) => byName.get(r)?.operation.entities ?? []));
   const pageList = unique(operations.flatMap((r) => (pagesByOperation.get(r) ?? []).map((p) => p.id)));
+  // Carry through a source-supplied anchor (route handlers, etc.) so it isn't lost.
+  const anchor = operations.map((r) => byName.get(r)?.operation.anchor).find(Boolean);
   const hasCall = pageList.length > 0;
   const anyUnknown = operations.some((r) => byName.get(r)?.quadrant === "unknown");
   // called -> pending (with mounts); else unknown -> unknown; else no_entry -> pending (empty mounts)
@@ -204,6 +206,7 @@ function buildDraft(
     object,
     mounted_on: pageList,
     operations: [...operations].sort(),
+    ...(anchor ? { code_anchor: anchor } : {}),
     status,
     source: "introspection",
     module: moduleSlug(module),

@@ -4,6 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { routeSource } from "../src/core/sources/route.js";
 import { classify } from "../src/core/classify.js";
+import { extractCapabilities } from "../src/core/extract.js";
+import { defaultProjectConfig } from "../src/config/project.js";
+import { StubProvider } from "./helpers/stub-provider.js";
 import type { SourceConfig } from "../src/core/sources/source.js";
 import type { Operation } from "../src/core/operation.js";
 
@@ -52,4 +55,21 @@ test("frontend fetch/axios call-sites match route operations; dynamic URL → UN
   const q = (name: string) => classified.find((c) => c.operation.name === name)!.quadrant;
   assert.equal(q("POST /users"), "user_capability");
   assert.equal(q("GET /api/orders"), "unknown"); // uncalled + dynamic sites present
+});
+
+test("extracted capability carries the source-supplied code anchor", async () => {
+  const ops = await routeSource.loadOperations(cfg, here);
+  const usage = routeSource.scanUsage(ops, frontendDir, here);
+  const classified = classify(ops, usage);
+  const canned = JSON.stringify([
+    { id: "create_user", name: "Create user", statement: "Create a user", module: "user", operations: ["POST /users"] },
+  ]);
+  const drafts = await extractCapabilities({
+    classified,
+    sites: usage.sites,
+    config: defaultProjectConfig(),
+    provider: new StubProvider(canned),
+  });
+  const cap = drafts.find((d) => d.id === "cap.create_user");
+  assert.ok(cap?.code_anchor?.endsWith("server/routes.ts"), `anchor should point at the handler: ${cap?.code_anchor}`);
 });
