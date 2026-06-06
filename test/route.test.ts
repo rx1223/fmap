@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { routeSource } from "../src/core/sources/route.js";
+import { routeSource, inferEntities } from "../src/core/sources/route.js";
 import { classify } from "../src/core/classify.js";
 import { extractCapabilities } from "../src/core/extract.js";
 import { defaultProjectConfig } from "../src/config/project.js";
@@ -72,6 +72,12 @@ test("extracted capability carries the source-supplied code anchor", async () =>
   });
   const cap = drafts.find((d) => d.id === "cap.create_user");
   assert.ok(cap?.code_anchor?.endsWith("server/routes.ts"), `anchor should point at the handler: ${cap?.code_anchor}`);
+});
+
+test("entities are inferred from the path's resource segment", () => {
+  assert.deepEqual(inferEntities("/api/jobs/{id}/advance"), ["Job"]);
+  assert.deepEqual(inferEntities("/api/models"), ["Model"]);
+  assert.deepEqual(inferEntities("/api/artifacts/{...path}"), ["Artifact"]);
 });
 
 test("Next catch-all route ([...path]) matches a multi-segment request URL", async () => {

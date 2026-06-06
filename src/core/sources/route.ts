@@ -85,7 +85,7 @@ function scanRoutes(scanRoot: string, projectRoot: string): Operation[] {
       sourceId: "route",
       name,
       kind: method,
-      entities: [],
+      entities: inferEntities(route),
       anchor,
       noise: NOISE_PATH_RE.test(route),
     });
@@ -155,6 +155,16 @@ function pagesApiUrl(segs: string[]): string | null {
   if (last === "index") after.pop();
   else after[after.length - 1] = last;
   return "/" + after.map(dynamicSegment).join("/");
+}
+
+/** Guess the resource entity from a path: the first non-`api`, non-param segment. */
+export function inferEntities(route: string): string[] {
+  for (const seg of route.split("/").filter(Boolean)) {
+    if (seg === "api" || seg === "v1" || seg === "v2" || /^\{.*\}$/.test(seg)) continue;
+    const base = seg.replace(/s$/i, "") || seg; // jobs → job, models → model
+    if (base) return [base.charAt(0).toUpperCase() + base.slice(1)];
+  }
+  return [];
 }
 
 /** [id] → {id}; [...slug] / [[...slug]] → {...slug} (catch-all); literals unchanged. */

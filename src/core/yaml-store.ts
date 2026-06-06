@@ -13,7 +13,7 @@ import { walkFiles } from "./fs-utils.js";
 
 const CAP_FILE_HEADER =
   "# fmap capabilities — SOURCE OF TRUTH. Edit freely; this is what operators verify.\n" +
-  "# On `fmap build`, machine fields (object, resolvers, mounted_on, code_anchor)\n" +
+  "# On `fmap build`, machine fields (object, operations, mounted_on, code_anchor)\n" +
   "# are refreshed from code; human fields (name, statement, status) are preserved.\n" +
   "# status: approved | pending | unknown | deprecated  (only a human writes `approved`)\n\n";
 
