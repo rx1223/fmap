@@ -1,6 +1,7 @@
 import { isInitialized } from "../config/project.js";
 import { loadAllCapabilities, loadSitemap } from "../core/yaml-store.js";
 import { pagePath } from "../core/sitemap.js";
+import { searchCapabilities } from "../core/query-engine.js";
 import type { Capability, Sitemap } from "../core/model.js";
 
 export interface QueryOptions {
@@ -14,9 +15,9 @@ export interface QueryOptions {
  */
 export async function queryCommand(text: string | undefined, opts: QueryOptions): Promise<void> {
   if (opts.serve) {
-    console.log(
-      "query --serve: an MCP server (find_capability / get_anchor) is planned for the app phase — not implemented yet.",
-    );
+    // Lazy-import so the MCP SDK + zod never load on the normal `fmap query` path.
+    const { serveMcp } = await import("../mcp/server.js");
+    await serveMcp(process.cwd());
     return;
   }
   const cwd = process.cwd();
@@ -37,7 +38,7 @@ export async function queryCommand(text: string | undefined, opts: QueryOptions)
     return;
   }
 
-  const matches = search(caps, text.trim());
+  const matches = searchCapabilities(caps, text.trim()).map((m) => m.capability);
   if (!matches.length) {
     console.log(`No capability matches "${text}".`);
     console.log("Tip: this may be a blind spot. Solve it by reading code, then add it to the map (status: pending).");
@@ -46,28 +47,6 @@ export async function queryCommand(text: string | undefined, opts: QueryOptions)
   }
   console.log(`${matches.length} match${matches.length > 1 ? "es" : ""} for "${text}":\n`);
   for (const c of matches.slice(0, 8)) printCapability(c, sitemap);
-}
-
-function search(caps: Capability[], query: string): Capability[] {
-  const q = query.toLowerCase();
-  const scored = caps
-    .map((c) => ({ c, score: scoreOf(c, q) }))
-    .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score);
-  return scored.map((x) => x.c);
-}
-
-function scoreOf(c: Capability, q: string): number {
-  let score = 0;
-  if (c.name.toLowerCase().includes(q)) score += 100;
-  if (c.id.toLowerCase().includes(q)) score += 40;
-  if (c.object.some((o) => o.toLowerCase().includes(q))) score += 30;
-  if (c.statement.toLowerCase().includes(q)) score += 20;
-  if ((c.operations ?? []).some((r) => r.toLowerCase().includes(q))) score += 15;
-  // Deprioritise deprecated/unknown so live capabilities surface first.
-  if (c.status === "deprecated") score -= 50;
-  if (c.status === "unknown") score -= 5;
-  return score;
 }
 
 function printCapability(c: Capability, sitemap: Sitemap): void {

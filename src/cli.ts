@@ -64,7 +64,7 @@ program
   .command("query")
   .argument("[text]", "capability name or object to locate")
   .description("Locate capabilities by name/object (agent entry point).")
-  .option("--serve", "run as an MCP server exposing find_capability/get_anchor (stub)")
+  .option("--serve", "run as a local MCP server (stdio) exposing find_capability/get_anchor/list_capabilities/how_to_reach")
   .action((text, opts) => queryCommand(text, opts));
 
 // Bare `fmap` (no args at all) → guide the user to the commands, exit 0.
