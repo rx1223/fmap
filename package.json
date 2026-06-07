@@ -1,6 +1,9 @@
 {
-  "name": "featuremap",
+  "name": "@rrr1223/fmap",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "Extract a feature capability map from a codebase: what a system can do, where it lives, and how to reach it.",
   "type": "module",
   "bin": {

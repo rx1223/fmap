@@ -21,7 +21,7 @@ test("scaffolds the agent skill + .mcp.json by default", () => {
     assert.ok(fs.existsSync(skillPath(dir)), "SKILL.md");
     assert.ok(fs.existsSync(mcpConfigPath(dir)), ".mcp.json");
     const mcp = JSON.parse(fs.readFileSync(mcpConfigPath(dir), "utf8"));
-    assert.deepEqual(mcp.mcpServers.fmap, { command: "npx", args: ["-y", "featuremap", "query", "--serve"] });
+    assert.deepEqual(mcp.mcpServers.fmap, { command: "npx", args: ["-y", "@rrr1223/fmap", "query", "--serve"] });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
