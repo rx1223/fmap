@@ -19,10 +19,10 @@ If you ever catch the map storing a limit, a threshold, or an `if`-result — th
 
 ## Install
 
-Requires Node ≥ 18. The npm package is **`@rrr1223/fmap`**; it installs a `fmap` binary.
+Requires Node ≥ 18. The npm package is **`capmap`**; it installs a `fmap` binary.
 
 ```bash
-npm install -g @rrr1223/fmap     # or run ad-hoc with: npx -y @rrr1223/fmap <command>
+npm install -g capmap     # or run ad-hoc with: npx -y capmap <command>
 ```
 
 Or from source:
@@ -62,7 +62,7 @@ There is intentionally **no `approve` command**. In the CLI phase, *approve = a 
 Built for AI agents (Claude Code, Cursor, …) working in the repo. `fmap init` makes a project agent-ready out of the box (opt out with `--no-skill`):
 
 - **`.claude/skills/feature-map/SKILL.md`** — a skill that triggers on *"where is X / how do I reach Y / what can this app do"* and teaches the workflow: the map says **WHERE**, code says **HOW**; `find → open the code_anchor → read the real rule`.
-- **`.mcp.json`** — registers the MCP server: `{ "mcpServers": { "fmap": { "command": "npx", "args": ["-y", "@rrr1223/fmap", "query", "--serve"] } } }`.
+- **`.mcp.json`** — registers the MCP server: `{ "mcpServers": { "fmap": { "command": "npx", "args": ["-y", "capmap", "query", "--serve"] } } }`.
 
 The server is **local** (stdio) — the agent spawns it with the repo as `cwd`. It serves only the small **map**, never your code; the agent opens the `code_anchor` in its own checkout. Read-only tools:
 
