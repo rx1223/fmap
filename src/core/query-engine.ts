@@ -37,16 +37,33 @@ export interface ResolvedCapability {
  * object 30, statement 20, operations 15; deprecated −50, unknown −5.
  */
 export function scoreCapability(c: Capability, text: string): number {
-  const q = text.toLowerCase();
   let score = 0;
-  if (c.name.toLowerCase().includes(q)) score += 100;
-  if (c.id.toLowerCase().includes(q)) score += 40;
-  if (c.object.some((o) => o.toLowerCase().includes(q))) score += 30;
-  if (c.statement.toLowerCase().includes(q)) score += 20;
-  if ((c.operations ?? []).some((r) => r.toLowerCase().includes(q))) score += 15;
+  if (fieldMatches(c.name, text)) score += 100;
+  if (fieldMatches(c.id, text)) score += 40;
+  if (c.object.some((o) => fieldMatches(o, text))) score += 30;
+  if (fieldMatches(c.statement, text)) score += 20;
+  if ((c.operations ?? []).some((r) => fieldMatches(r, text))) score += 15;
   if (c.status === "deprecated") score -= 50;
   if (c.status === "unknown") score -= 5;
   return score;
+}
+
+/**
+ * Match a query against a field. An ASCII query matches only at a WORD BOUNDARY
+ * (so "ai" doesn't match "em·ai·l"); camelCase is split first so "email" still
+ * matches "verifyEmail". A non-ASCII query (e.g. CJK — no word boundaries) falls
+ * back to substring, which is the natural behaviour there.
+ */
+function fieldMatches(field: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  const normalized = field.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  if ([...q].some((ch) => ch.charCodeAt(0) > 127)) return normalized.includes(q); // non-ASCII (e.g. CJK) -> substring
+  return new RegExp(`(^|[^a-z0-9])${escapeRegExp(q)}`).test(normalized); // ASCII → word-start
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Matches sorted by descending score; only score > 0. */

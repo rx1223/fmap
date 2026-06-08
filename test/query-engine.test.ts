@@ -34,6 +34,27 @@ test("scoring weights: name beats statement-only; deprecated/unknown demoted", (
   assert.equal(scoreCapability(cap({ id: "x", name: "nope" }), "revenue"), 0);
 });
 
+test("word-aware: a short ASCII query does not match mid-word ('ai' ⊄ 'email')", () => {
+  const c = cap({
+    id: "cap.verify_email",
+    name: "Verify email",
+    statement: "verify their email on the auth page",
+    object: ["Verify-email"],
+    operations: ["GET /verify-email"],
+  });
+  assert.equal(scoreCapability(c, "ai"), 0, "'ai' must not match inside 'email'/'auth'");
+  assert.ok(scoreCapability(c, "email") > 0, "whole word 'email' matches");
+  assert.ok(scoreCapability(c, "veri") > 0, "word-prefix 'veri' matches 'verify'");
+});
+
+test("camelCase is split so 'email' matches 'verifyEmail'", () => {
+  assert.ok(scoreCapability(cap({ id: "x", name: "verifyEmail" }), "email") > 0);
+});
+
+test("CJK query falls back to substring matching", () => {
+  assert.ok(scoreCapability(cap({ id: "x", name: "查看店铺营业额" }), "营业额") > 0);
+});
+
 test("searchCapabilities sorts by score and drops zero-score", () => {
   const caps = [
     cap({ id: "cap.b", name: "b", statement: "mentions revenue" }), // 20
